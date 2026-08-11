@@ -1,258 +1,286 @@
-# Interproof — feasibility experiment
+# Interproof
 
-A **sandboxed** dual-view reader for one informal/formal pair: the PQCPlus papers
-and their Lean formalization. Nothing here writes back into
-`assets/1-projects/PQCPlus/`; `sandbox/` holds read-only source copies.
+A paper and its formalization, read side by side: **the compiled PDF on the
+left, the Lean sources on the right**, scrolled together and linked by the
+citations that are already in them.
 
-This repository tracks the framework — the reader, the extractor, the build —
-and never the material being read. `sandbox/` and the PDFs compiled from it are
-untracked; **a fresh clone starts with `make sync`**, which populates them from
-the live PQCPlus project, and then `make`.
+Pick a lemma in the paper and the right pane opens the module that formalizes
+it, scrolled to the declaration and banded. Pick a declaration and the paper
+marks every statement it claims to be. Press `a` and every mechanized statement
+in the paper lights up at once — coverage as a property of the page rather than
+as a table somewhere else.
 
-Open `site/index.html` in a browser. It is one self-contained file — no server,
-no network, no Lean toolchain. Rebuilding it needs a LaTeX installation, because
-the paper side *is* the compiled PDF.
+The paper side is the **compiled PDF**, not a re-render of the LaTeX. A
+113-macro preamble, `mathpartir` rule displays and `\inferrule` do not survive
+re-rendering, and every approximation is a place where a reader cannot trust
+what they are looking at. SyncTeX supplies `label → page, rectangle`, so
+fidelity is exact by construction.
 
-## What this is testing
+> **The precondition.** Interproof does not invent the correspondence; it reads
+> one you already wrote. A formalization whose comments cite the paper —
+> `P3:lem:one-sided`, `note, Def. procedure declaration` — already holds it.
+> Point this at sources that cite nothing and the manifest comes back empty.
+> The protocol is one page: **[docs/CITING.md](docs/CITING.md)**.
 
-The Interproof premise: *does a synchronized informal ↔ formal view actually make
-an unfamiliar Lean proof faster to read?* If it does not, the project's motivation
-does not hold, and this experiment costs days instead of weeks to find out.
+---
 
-## Tool decision
+## Look at one first
 
-Surveyed: leanblueprint, Verso Blueprint, LeanArchitect, Alectryon/LeanInk,
-SubVerso, span, Lean Atlas, doc-gen4.
+The repository publishes its own example — a small paper, its Lean
+formalization, and the correspondence between them — as a live reader:
+**[a working Interproof site](https://lucianoxu.github.io/Interproof/)**.
+Nothing to install; press `?` in the page for what you are looking at. The
+sources for it are [`examples/demo`](examples/demo).
 
-**Adopted: `span`'s data model** — a checked `label ↔ declaration` manifest — and
-nothing else. The viewer is ~900 lines of local code over pdf.js.
+## Install
 
-The deciding facts, all specific to this project:
-
-- The correspondence **already exists, pointing Lean → LaTeX**. PQCPlus's Lean
-  docstrings carry ~120 `P3:<label>` / `note, <label>` citations. leanblueprint
-  wants the opposite direction (`\lean{}` markers inside the LaTeX), which means
-  discarding that asset and annotating an actively-edited paper instead.
-- leanblueprint's output links a theorem to its **doc-gen4 API page**; it never
-  shows the proof body. Reading proof bodies is the thing under test.
-- doc-gen4 would mean a full mathlib documentation build on top of an already
-  7.3 GB `.lake`. Disproportionate for an experiment.
-- Verso Blueprint requires the prose to live inside Lean. P3 is a real LaTeX
-  paper with a 113-macro preamble and `mathpartir` rule displays; porting it is
-  a rewrite, not an experiment.
-- LeanArchitect generates LaTeX from Lean. We already have better LaTeX.
-- **SubVerso** (not LeanInk, which is stalled) is the correct upgrade for
-  per-tactic goal states — deliberately deferred: it is a build-time,
-  version-coupled dependency, and the MVP needs no Lean build at all.
-
-The paper side was first re-rendered from LaTeX source with KaTeX. That was
-wrong, and replacing it is the one structural change since: a 113-macro
-preamble, `mathpartir` rule displays and `\inferrule` do not survive
-re-rendering, and every approximation is a place where the reader cannot trust
-what they are looking at. **The paper pane now shows the compiled PDF itself**,
-scrolled to the item and banded, with `synctex` supplying `label → page,
-rectangle`. Fidelity is exact by construction, and the macro table, the
-LaTeX→HTML translator and 644 KB of KaTeX all left with it.
-
-## Pipeline
-
-```
-make            # pdf + extract + build, ~25 s cold, ~3 s warm
-make pdf        # sandbox/tex/  ->  stignore-build/{P3,note}/main.pdf + .synctex.gz
-make extract    # sandbox/ + the PDFs  ->  site/manifest.json
-make site       # manifest + PDFs + assets -> site/index.html (single file)
-make sync       # refresh sandbox/ from the live PQCPlus project
-make distclean  # also drop the compiled PDFs
+```bash
+pipx install git+https://github.com/LucianoXu/Interproof     # today
+pipx install interproof                                      # once published to PyPI
 ```
 
-`tools/extract.py` parses both sides as **source text**:
+`pip install` instead of `pipx` works equally well; there are no runtime
+dependencies to isolate.
 
-- *LaTeX*: every labelled `theorem/lemma/definition/…` environment with its
-  statement, its following `proof`, its section path, its source line span, and
-  the labels it cites — from the proof as much as the statement, since a proof
-  citing a lemma is what a dependency *is*. What cites an item is nowhere in
-  the source, only in the sum of every other item's `\Cref`s, so it is
-  inverted here.
-- *Lean*: declarations with docstrings, module docstrings, `/-! ## … -/` section
-  headers, and every citation occurring **in a comment**, resolved against the
-  two label universes. Ambiguous labels are disambiguated by the nearest `P3` /
-  `note` marker; unresolvable ones are reported as dangling — that report is the
-  `span`-style consistency check. A module is keyed by its path under
-  `sandbox/lean` rather than by its file name, so a source tree with
-  subdirectories survives into the index instead of being flattened.
+You also need a **LaTeX installation** (`latexmk` and SyncTeX, which every
+TeXLive has). That is the real dependency, and it is why this ships as a
+command rather than as a binary: no bundle can carry TeXLive, and a machine
+that has TeXLive is not short of a Python.
 
-  The declarations' own reference structure is read the same way: the names a
-  declaration writes **in its code** that resolve to another declaration. This
-  is a name match, not elaboration — it cannot see a lemma that a `simp` set
-  applied for you, and a local binder sharing a declaration's name reads as a
-  use. Comments are excluded: a name discussed in a docstring is prose, and the
-  citations that matter there are already harvested as paper links.
+You do **not** need a Lean toolchain. Both sides are parsed as source text, so
+Interproof runs against a formalization you have never built — including
+someone else's.
 
-  Modules are then put in **import order** — each after everything it imports,
-  ties by depth — and every list in the viewer uses it. Alphabetical order is
-  the file system's and says nothing about the development: it opens on
-  `Ambient` only by luck of the letter A, and interleaves the layers, so
-  scrolling the index tells you nothing about what is built on what. In import
-  order the index reads as the development does, from the ambient state to the
-  interaction theorem. Which imports are internal is not assumed: the
-  root prefix (`PQCPlus.`) is whatever prefix the imports that resolve agree
-  on, so nothing here knows the package's name either.
+## Quickstart
 
-  A citation takes three forms in these sources, and all three count: the
-  canonical `note, def:proc-decl`, and the two that name the item by **title** —
-  `note, Def. procedure declaration` and `Definition (frame lifting)`. Title
-  matches must agree on the environment kind, so `Lemma (locality)` does not
-  resolve to `def:local`. A citation in the `/-- … -/` docstring above a
-  declaration belongs to that declaration, not to the module.
+```bash
+cd my-project              # the one holding the paper and the Lean sources
+interproof init            # writes interproof.toml by looking at what is here
+interproof check           # does anything resolve yet?
+interproof serve           # read it, rebuilt as you edit
+interproof build           # a folder you can archive, publish, or hand over
+```
 
-  Which is also the citation's **extent**, and the right pane bands it. Two
-  rules, both learned by looking at bands that were wrong. Whether a
-  declaration has a docstring is asked of the comment spans, not guessed from a
-  line ending in `-/`: a `/-! ## … -/` section header ends that way too, and
-  taking one for a docstring sends the search back to the previous
-  declaration's `/--`, so the band starts forty lines early with a whole
-  declaration inside it. And a citation in module prose, which no declaration
-  owns, extends over the **comment block that does the citing** — one band per
-  block, never the hull of several. `lem:one-sided` is named in `StepLemmas`'
-  header and again at a section break six hundred lines down; those are two
-  places, and the file between them cites nothing.
+`init` guesses: every `.tex` with a `\documentclass` is a document, what it
+`\input`s is its source list, the shallowest directory holding `.lean` files is
+the formal root. It writes those guesses out as a filled-in, commented file —
+correcting a guess is easier than filling in a blank.
 
-`tools/synctex.py` then places each item in its PDF. SyncTeX brackets a block
-rather than measuring it: the `\begin` line is a reliable top, but `\end` is
-credited with boxes inside the block as readily as with the paragraph after it,
-so it is not a body line and cannot be trusted as a bottom either. The bracket
-therefore only decides which typeset lines belong, and those lines' own extent
-sets the band. Three rules make that hold up on real pages:
+There is a complete worked example in **[examples/demo](examples/demo)**: a
+small paper, a small formalization, and a configuration written to be read.
+It builds from a fresh clone with no material of your own.
 
-- a line counts when its **midpoint** is inside — which keeps the head line,
-  whose ascender rises above SyncTeX's box, and rejects the next paragraph's
-  first line, which starts above the bracket;
-- a bottom on the **next page does not prove the block reached it**: a block
-  ending near the foot of a page is bracketed by the first line of the
-  following one. If that page holds none of the block's lines, the span
-  collapses — otherwise the band would run to the page edge;
-- the **folio is not content**. A one-line block holding nothing but a number
-  sits close enough under a block ending low on the page to be mistaken for
-  part of it.
+## How the connection is made
 
-All 46 items land within 1pt of the last line of their block.
+Three things happen, in this order, and each is a separate command if you want
+it to be:
 
-## Retargeting
+1. **`latexmk -synctex=1`** compiles each document. SyncTeX is not optional:
+   it is what lets a `\label` be found as a page and a rectangle.
+2. **Both sides are parsed as source text.** From the LaTeX: every labelled
+   `theorem`/`lemma`/`definition`/… with its statement, its proof, its place in
+   the section tree, and the labels it cites. From the Lean: declarations with
+   their docstrings, module docstrings, and every citation occurring in a
+   comment. Citations are resolved against the label universe of each document;
+   what does not resolve is reported, not dropped.
+3. **The manifest** — a checked `label ↔ declaration` mapping, the data model
+   borrowed from [`span`](https://github.com/dwrensha/span) — is handed to a
+   viewer that knows nothing about your documents.
 
-Nothing outside two places knows which documents exist. The viewer, the
-geometry, the Lean parser and the site build all ask rather than assume.
+Both directions of both reference structures come out of this: what a statement
+cites and what cites it, what a declaration uses and what uses it. A proof can
+be walked backwards to its hypotheses on either side.
 
-- **`DOCS` in `tools/extract.py`** — the document set: id, title, source root,
-  files, what latexmk compiles, and the markers a Lean comment uses to name the
-  document (`P3`, `note`, `EasyPQC`). The `pdf` target, the extractor, the
-  manifest's `docs` section and the viewer's captions all derive from it.
-- **`make sync`** — where the raw material is fetched from, which is a fact
-  about the PQCPlus layout rather than about the documents.
+## Two modes
 
-A third document is an entry in `DOCS`; there is no "the other document"
-anywhere. What the design cannot supply is the correspondence itself: point it
-at a Lean codebase whose docstrings never cite a paper and the manifest comes
-back empty. `span`'s data model is general; having something to populate it is
-the precondition.
+| | `interproof serve` | `interproof build` |
+|---|---|---|
+| what it is | a local server that rebuilds as you edit | a folder that stands alone |
+| who it is for | whoever is writing the paper or the Lean | whoever is reading it |
+| on a `.lean` edit | reparsed, browser updates, < 1 s | — |
+| on a `.tex` edit | latexmk (incremental) then reparse, 1–3 s | — |
+| needs LaTeX | yes | to build; never to read |
+
+`serve` binds `127.0.0.1` by default, and that is the intended shape: it runs
+`latexmk` on your files and has no authentication. Its real audience is the
+*author* — change a `\label` and watch which citations go dangling.
+
+## What `build` produces
+
+```
+site/
+  index.html          # the reader, self-contained: double-click it
+  manifest.json       # the correspondence, machine-readable
+  pdf/<id>.pdf        # the compiled documents
+  sources/…           # the LaTeX and Lean sources, in their original layout
+  interproof.toml     # the configuration that produced all of it
+  README.md           # what the folder is and how to rebuild it
+```
+
+`index.html` inlines everything it needs — pdf.js, the manifest, the PDFs — so
+it opens from the file system with no server and no network. The folder around
+it is what makes the artifact honest: the sources that produced the reader
+travel with it, and `interproof build` inside `sources/` reproduces the whole
+thing. The PDFs are therefore stored twice; that costs a megabyte or two and
+buys both properties, and `--no-inline` declines the trade for a paper where it
+matters (that variant needs to be served over HTTP).
+
+The **Download** button, top right of the reader, packs all of the above —
+including the page itself — into a zip in the browser. A reader who was sent a
+single HTML file can still get back to the sources.
+
+## Configuration
+
+One file, `interproof.toml`, living with the material rather than with the
+tool. Every path in it is relative to itself, so a configuration is portable.
+
+```toml
+[project]
+title = "PQCPlus"
+
+[[document]]
+id      = "P3"                       # how a citation in the Lean names it
+title   = "EasyPQC on a Concrete Semantics"
+root    = "auto-research/P3-easypqc"
+main    = "main.tex"
+files   = ["sections/*.tex"]         # in reading order
+markers = ['\bP3\b', 'EasyPQC']      # only needed to break ambiguity
+env     = { BIBINPUTS = "../common:" }
+
+[formal]
+kind = "lean"
+root = "Formalization/PQCPlus"
+
+[grammar]                            # optional: this project's conventions
+label_prefixes = ["thm", "lem", "def", "prop", "cor"]
+environments   = ["theorem", "lemma", "definition", "proposition", "corollary"]
+```
+
+Full reference: **[docs/config.md](docs/config.md)**.
 
 ## Reading the page
 
-- **Paper → Lean** (default): pick a statement; the right page opens the module
-  that cites it, scrolled to the declaration and banded. Other declarations
-  citing the same statement are banded dimly, and named in the strip above; a
-  name from another module switches the file.
-- **Lean → Paper**: pick a declaration; the left page marks every paper item it
+- **Paper → Lean** (default): pick a statement, get the module that cites it.
+  Other declarations citing the same statement are banded dimly and named in
+  the strip above.
+- **Lean → Paper**: pick a declaration, and the paper marks every statement it
   cites at once, focused one first.
-- **Files**: the third index, and the only one that does not go through the
-  correspondence — the sources as they sit on disk. The papers as a flat list,
-  the Lean modules in their directory tree. Picking a document opens it whole
-  on the left, picking a module opens it whole on the right, nothing banded,
-  each side set independently. Two directional modes drive both pages from one
-  selection; this one lets the reader put an arbitrary paper beside an
-  arbitrary module, which is the one pairing the citations cannot arrange.
-  The modules are in import order, and what a module imports is named above
-  the pane and followable.
-- **References**, above each page and on both sides: what the thing you are
-  reading rests on, and what rests on it — `cites` / `cited by` for a paper
-  item, `uses` / `used by` for a declaration. The two directions are separate
-  rows, because they answer different questions and one undifferentiated list
-  of neighbours answers neither. Every name is followable, so a proof can be
-  walked backwards to its hypotheses on either side.
+- **Files**: the two source trees as they sit on disk — the one index that does
+  not go through the correspondence. It is how you put an arbitrary paper
+  beside an arbitrary module, which is the pairing the citations cannot arrange
+  for you. Modules are in **import order**, not alphabetical: alphabetical is
+  the file system's order and says nothing about how a development is built up.
+- **References**, above both pages: `cites` / `cited by` for a statement,
+  `uses` / `used by` for a declaration — each direction on its own row, because
+  they answer different questions.
+- **Formalized** (`a`): every mechanized statement marked in the paper at once.
+  A gap reads as a gap.
+- **Clean** (`c`): the apparatus put away, leaving the two documents.
+- `/` filter · `j`/`k` move · `a` formalized · `c` clean · the URL hash
+  deep-links an item · `\Cref` links inside the PDF are followable.
 
-  On the Lean side the rows are **restricted to declarations that carry a
-  citation of their own** — 62 of the 906. A proof rests on a hundred names and
-  nearly all of them are plumbing: `CqState` alone is used by 152 declarations,
-  which is a fact about the semantic domain, not about the correspondence the
-  reader came for. Filtered, the longest `used by` is 21. What is left out is
-  counted (`+137 uncited`) and one click away, never silently dropped — the
-  same click opens a row cut for length. A reference to a *section* is named
-  but not offered, since only labelled statements are placed in the PDF.
-- **Formalized** (`a`): a standing overlay that marks *every* item with a Lean
-  counterpart, in green, at once — under the selection band and independent of
-  it. The reading modes answer "where is this one item"; this answers the
-  question asked before that one, and answers it on the page itself: how much
-  of this paper has been mechanized, and which parts. A gap reads as a gap —
-  an unmarked block between two marked ones — rather than as an absence from a
-  list. This replaced a coverage table of every item × every module, which
-  answered the same question a page away from the thing it was about, and in a
-  grid whose cells the reader had to translate back into statements. The count
-  each rail row already carries says the rest. The marks are the only
-  clickable ones: a click opens that item's
-  declaration on the right, so the paper becomes an index into the Lean
-  sources. `\Cref` links stay on top of the overlay and still follow.
-- **Clean** (`c`): the index, both header bars and the reference rows put away,
-  leaving the two documents and the marks on them. Apparatus is what you want
-  while deciding what to read and what is in the way once you are reading it.
-  The rail is hidden rather than removed, so `j`/`k` still walk the selection
-  with it off screen; `/` brings it back, since asking to filter is asking for
-  the index.
-- Both pages are whole documents scrolled, not extracts: the left is the
-  compiled PDF (`+` `−` `fit` zoom, **with proof** extends the band over the
-  proof that follows), the right is the `.lean` file with its line numbers. A
-  declaration read without what surrounds it is a declaration read without its
-  place in the module.
-- `/` filter · `j`/`k` move · `a` formalized · `c` clean · citations are
-  clickable in both directions, and so are the `\Cref` links inside the PDF
-  itself · the URL hash deep-links an item.
+## Publishing
 
-## What the run says about PQCPlus
+Interproof stops at a folder. It does not do TLS, authentication, or domains,
+and it should not: the folder is a static site, and every way you already
+publish a static site works on it unchanged — GitHub Pages, Netlify, nginx, a
+USB stick, an email attachment. Recipes, including how to expose a *live*
+instance safely over a tunnel: **[docs/hosting.md](docs/hosting.md)**.
 
-134 citations (14 of them by title), 0 dangling, 906 Lean declarations over
-18,413 lines in 14 modules; all 46 labelled statements located in the PDFs.
-Within the sides: 54 cross-references between paper items, 4,472 name edges
-between declarations.
-20 of 28 P3 statements and 14 of 18 note statements have a Lean counterpart.
+## For AI agents
 
-Reading only canonical `kind:label` citations had put the note at 8 of 18. The
-six recovered — `def:proc-decl → ProcDef`, `def:cq-statements → Stmt`,
-`def:adv-decl`, `def:instantiation`, `def:adv-call`, `def:local` — are the core
-syntax and semantics definitions, and they were never uncited; they were cited
-in a form nothing was reading.
+If you were handed this README and asked to set up Interproof on a repository,
+this is the whole procedure.
 
-What is left uncovered is not noise. On the note side `def:cq-semantics` and
-`def:proc-call` are *described* in `Semantics.lean`'s module docstring, formula
-and all, but never named — a citation genuinely missing from the Lean source,
-not a reader gap. `lem:comb` is explicitly out of scope. On the P3 side
-`prop:swap`, `cor:yaeasypqc`, `lem:fundamental` are precisely the open items in
-`LeanOracleAdvSpec.md` §4.
+1. **Check the precondition first.** `grep -rE '\b(thm|lem|def|prop|cor):' --include=*.lean .`
+   If nothing comes back, the formal sources cite no paper, and there is
+   nothing for this tool to read. Say so and stop; read
+   [docs/CITING.md](docs/CITING.md) and propose adding citations instead of
+   building an empty reader.
+2. `pipx install interproof` (or `pip install interproof`), and confirm
+   `latexmk --version` works. Without LaTeX, `interproof check` still runs — it
+   just cannot place anything on a page.
+3. `interproof init` at the repository root, then **read the generated
+   `interproof.toml` and correct it**. The guesses to check: is each
+   `[[document]]` really a document rather than an included fragment; is
+   `[formal] root` the directory whose subdirectories you want to see in the
+   index.
+4. `interproof check`. Exit code 0 means every citation resolves. Nonzero means
+   dangling citations, and the report names each one with a file and a line.
+   That report is the deliverable of this step — fix or report them before
+   building anything.
+5. `interproof build -o site`. The result is a folder; `site/index.html` opens
+   with no server.
+6. Useful for scripting: `interproof check --json` (machine-readable report,
+   nonzero exit on dangling) and `interproof manifest -o out.json` (the full
+   correspondence, schema version in `manifest.schema`).
+
+Failure modes you will actually hit, and what they mean:
+
+| symptom | cause |
+|---|---|
+| `no interproof.toml here or in any parent` | run `interproof init` first |
+| `root '…' does not exist` | a path in the configuration is wrong; they are relative to the toml |
+| `no .synctex.gz beside main.pdf` | `-synctex=1` was removed from that document's `latexmk` |
+| every statement `unlocated` | the PDFs were never compiled — drop `--skip-pdf` |
+| 0 links, 0 dangling | the citations use a label prefix not in `[grammar] label_prefixes` |
+| `LaTeX failed` | the document does not compile on its own; fix that first |
+
+Do not edit the Python to retarget the tool. Everything that varies between
+projects is in `interproof.toml`; if something you need is not, that is a bug
+worth reporting rather than a patch worth making.
 
 ## Known limits
 
-- Statement-level granularity. Proof-body ↔ tactic-block alignment — the actual
-  research contribution Interproof would make — is **not** here yet.
-- No goal states and no hover types. Both need elaboration, so both are the
-  same threshold — a Lean build in the pipeline — and SubVerso crosses it once
-  for both. Everything here is source text; the syntax colouring is a
-  tokenizer, not Lean's grammar.
-- Citations are trusted, not verified: nothing checks that a Lean declaration
-  really states what the cited paper item says. The same holds one level down:
-  the `uses` graph is what the source *names*, which is a good approximation of
-  what a proof depends on and not the same thing.
-- The band is only as good as SyncTeX's line attribution. It is checked against
-  the page text, but an item whose `\begin` is inside a macro would drift.
-- `\Cref`s are clickable inside the P3 PDF only: the note is built without
-  `hyperref`, so its cross-references carry no link annotations to follow. The
-  `cites` strip above the page works for both.
-- Under `file://` pdf.js runs in the main thread: a blob-URL worker inherits the
-  opaque origin and is refused, and pdf.js hangs rather than falling back. Served
-  over http it takes the real worker.
+- **Statement-level granularity.** Proof-body ↔ tactic-block alignment — the
+  actual research contribution this project would make — is not here yet.
+- **No goal states, no hover types.** Both need elaboration, so both need a
+  Lean build in the pipeline; [SubVerso](https://github.com/leanprover/subverso)
+  crosses that threshold once for both. Everything here is source text, and the
+  syntax colouring is a tokenizer, not Lean's grammar.
+- **Citations are trusted, not verified.** Nothing checks that a declaration
+  states what the statement it cites says. Interproof puts the two texts side
+  by side so a reader can check in a second, which is a different and more
+  honest claim.
+- The `uses` graph is what the source *names* — a good approximation of what a
+  proof depends on, and not the same thing. It cannot see a lemma a `simp` set
+  applied for you.
+- The band is only as good as SyncTeX's line attribution; an item whose
+  `\begin` is inside a macro will drift.
+- Under `file://` pdf.js runs in the main thread — a blob-URL worker inherits
+  the opaque origin and is refused. Served over HTTP it takes the real worker.
+- Lean 4 only. The formal side is one module (`interproof/lean.py`); a second
+  prover is a new module, not a setting.
+
+## Related work
+
+Surveyed before writing any of this: leanblueprint, Verso Blueprint,
+LeanArchitect, Alectryon/LeanInk, SubVerso, `span`, Lean Atlas, doc-gen4. The
+short version of why none of them fit: they want the correspondence to point
+**LaTeX → Lean** (`\lean{}` markers in the paper), which means annotating the
+half that is still being edited, and they link a theorem to its generated API
+page rather than showing the proof body. Interproof reads the correspondence in
+the direction formalizers already write it, and shows both sources.
+
+The long version, with the numbers from the first real pair —
+134 citations, 0 dangling, 906 declarations over 18,413 lines, 34 of 46
+statements mechanized — is in
+**[docs/case-study-PQCPlus.md](docs/case-study-PQCPlus.md)**.
+
+## Development
+
+```bash
+git clone …  &&  cd interproof
+pip install -e .
+make demo              # build the tracked example
+```
+
+The repository holds the framework and never the material being read.
+`interproof/` is the package (`tex.py` and `lean.py` are the two parsers,
+`synctex.py` is the geometry, `web/` is the viewer), `examples/demo/` is the
+tracked pair that a fresh clone can build, and `docs/` is everything above in
+more detail.
+
+`python -m unittest discover -s tests` is the suite; CI runs it against
+`examples/demo` with a real TeX installation, then publishes that example to
+Pages. Licensed under Apache 2.0.
