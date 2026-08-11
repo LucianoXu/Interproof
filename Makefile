@@ -1,30 +1,49 @@
+## Interproof — development shortcuts.
+##
+## The tool itself is `interproof`, and it is driven by an `interproof.toml`
+## that lives with the material being read.  Nothing here is required to use
+## it: this file exists because *this* repository also carries a case study
+## whose sources are fetched from elsewhere, and fetching them is the one step
+## the tool cannot do for you.
+##
+##     pip install -e .        # or: pipx install interproof
+##     interproof init         # in the project holding the paper and the Lean
+##     interproof serve        # read it, rebuilt as you edit
+##     interproof build        # a folder to archive or publish
+
 PQCPLUS := /data/vault/assets/1-projects/PQCPlus
-BUILD   := stignore-build
 
-.PHONY: all pdf extract site sync serve clean distclean
+.PHONY: all check serve demo sync clean distclean install
 
-all: pdf extract site
+## The case study: sandbox/ must exist first (`make sync`).
+all:
+	interproof build
 
-## Compile every document in the DOCS table of tools/extract.py, which is the
-## one place this build knows which documents exist.  -synctex=1 is what makes
-## label -> page,rectangle possible; latexmk handles incrementality itself.
-pdf:
-	python3 tools/build_pdf.py
+check:
+	interproof check
 
-extract: pdf
-	python3 tools/extract.py
+serve:
+	interproof serve
 
-site:
-	python3 tools/build_site.py
+## The tracked example — the one thing a fresh clone can build with no
+## material of its own.  It is also the regression test: the parsing rules
+## were learned from real sources, and this is where they stay checked.
+demo:
+	cd examples/demo && interproof build -o ../../stignore-build/demo-site
+
+install:
+	python3 -m pip install -e .
 
 ## Populate the read-only source copies from the live project.  `sandbox/` is
 ## not tracked — this repository holds the framework, never the material being
-## read — so this target creates it, and a fresh clone starts here.
+## read — so this target creates it, and a fresh clone of the case study starts
+## here.  A project of your own needs none of this: point `interproof.toml` at
+## the sources where they already are.
 sync:
 	mkdir -p sandbox/lean sandbox/tex/common sandbox/tex/note \
 	         sandbox/tex/P3-easypqc/sections
-## the Lean tree is copied as a tree: the extractor keys a module by its path
-## under sandbox/lean, and the file index shows that structure
+## the Lean tree is copied as a tree: a module is keyed by its path under the
+## formal root, and the file index shows that structure
 	rsync -am --include='*/' --include='*.lean' --exclude='*' \
 	      $(PQCPLUS)/Formalization/PQCPlus/ sandbox/lean/
 	cp $(PQCPLUS)/auto-research/P3-easypqc/main.tex       sandbox/tex/P3-easypqc/
@@ -36,12 +55,9 @@ sync:
 	cp "$(PQCPLUS)/notes/RHL-with-Arbitrary-Quantum-Adversary/appendix.tex" sandbox/tex/note/
 	cp $(PQCPLUS)/auto-research/Lean*Spec.md              sandbox/
 
-serve:
-	cd site && python3 -m http.server 8777 --bind 127.0.0.1
-
 clean:
-	rm -f site/manifest.json site/index.html
+	rm -rf site
 
 ## also drop the compiled PDFs (`make` rebuilds them in ~20 s)
 distclean: clean
-	rm -rf $(BUILD)
+	rm -rf stignore-build
