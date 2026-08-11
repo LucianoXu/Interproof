@@ -110,14 +110,19 @@ the precondition.
 
 ## Reading the page
 
-- **Paper → Lean** (default): pick a statement; the right page shows every Lean
-  declaration that cites it, docstring first, source folded.
+- **Paper → Lean** (default): pick a statement; the right page opens the module
+  that cites it, scrolled to the declaration and banded. Other declarations
+  citing the same statement are banded dimly, and named in the strip above; a
+  name from another module switches the file.
 - **Lean → Paper**: pick a declaration; the left page marks every paper item it
   cites at once, focused one first.
 - **Coverage** (`g`): every labelled item × every Lean module. Also lists the
   items with no Lean counterpart at all.
-- The left page is the compiled document, scrolled continuously. `+` `−` `fit`
-  zoom; **with proof** extends the band over the proof that follows.
+- Both pages are whole documents scrolled, not extracts: the left is the
+  compiled PDF (`+` `−` `fit` zoom, **with proof** extends the band over the
+  proof that follows), the right is the `.lean` file with its line numbers. A
+  declaration read without what surrounds it is a declaration read without its
+  place in the module.
 - `/` filter · `j`/`k` move · citations are clickable in both directions, and so
   are the `\Cref` links inside the PDF itself · the URL hash deep-links an item.
 
@@ -144,7 +149,10 @@ not a reader gap. `lem:comb` is explicitly out of scope. On the P3 side
 
 - Statement-level granularity. Proof-body ↔ tactic-block alignment — the actual
   research contribution Interproof would make — is **not** here yet.
-- No goal states (needs SubVerso).
+- No goal states and no hover types. Both need elaboration, so both are the
+  same threshold — a Lean build in the pipeline — and SubVerso crosses it once
+  for both. Everything here is source text; the syntax colouring is a
+  tokenizer, not Lean's grammar.
 - Citations are trusted, not verified: nothing checks that a Lean declaration
   really states what the cited paper item says.
 - The band is only as good as SyncTeX's line attribution. It is checked against

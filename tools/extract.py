@@ -224,7 +224,6 @@ class LeanDecl:
     end_line: int
     doc_line: int = 0        # first line of the `/-- ... -/` docstring, if any
     doc: str = ""
-    code: str = ""
     section: str = ""
     refs: list[dict] = field(default_factory=list)
     has_sorry: bool = False
@@ -351,7 +350,7 @@ def parse_lean_file(
         code = "\n".join(lines[ln_no - 1:end])
         decls.append(LeanDecl(
             name=dname, kind=kind, file=name, line=ln_no, end_line=end,
-            doc_line=doc_line, doc=doc, code=code, section=sec,
+            doc_line=doc_line, doc=doc, section=sec,
             has_sorry=bool(re.search(r"\bsorry\b", code)),
         ))
 
@@ -521,10 +520,15 @@ def main() -> int:
         if f.stem.startswith("_root_"):
             continue
         decls, mdoc, refs = parse_lean_file(f, titles)
+        text = f.read_text(encoding="utf-8")
         lean_files.append({
             "name": f.stem,
             "module_doc": mdoc,
-            "lines": len(f.read_text(encoding="utf-8").split("\n")),
+            "lines": len(text.split("\n")),
+            # the module verbatim: the pane scrolls the file and bands the
+            # declaration, so a slice would cost the reader the surroundings
+            # that say where in the module they are
+            "text": text,
             "decls": [asdict(d) for d in decls],
         })
         all_refs.extend(refs)

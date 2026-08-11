@@ -48,95 +48,6 @@ function esc(s) {
 }
 
 /* =========================================================================
-   Lean syntax highlighting + citation linkification
-   ========================================================================= */
-
-var KW = new Set(("theorem lemma def abbrev instance structure inductive class deriving " +
-  "where by fun let have show from calc match with do if then else at " +
-  "namespace end section variable variables open universe noncomputable private protected " +
-  "partial unsafe scoped local attribute set_option import example mutual return " +
-  "exact apply intro intros refine rintro rcases obtain cases induction constructor " +
-  "simp simpa rw rwa subst omega ring linarith nlinarith norm_num positivity decide " +
-  "rfl trivial exists use ext funext congr gcongr push_cast field_simp " +
-  "unfold dsimp change conv first all_goals any_goals repeat try focus " +
-  "classical this fin_cases interval_cases specialize contrapose by_cases by_contra " +
-  "left right constructor infer_instance assumption").split(/\s+/));
-
-var IDCH = /[A-Za-z0-9_'!?À-ɏͰ-Ͽᴀ-ᵿ₀-ₜ℀-⅏\ud835]/;
-
-function leanCite(text, escaped) {
-  /* link `P3:lem:cm`, `note, lem:closure`, bare `thm:interaction` */
-  return text.replace(/\b(thm|lem|def|prop|cor|rem|sec|sub|app):([A-Za-z0-9][A-Za-z0-9\-_]*)/g,
-    function (whole, kind, name) {
-      var lbl = kind + ":" + name.replace(/\.$/, "");
-      var cm = lbl.match(/^(.*)\.(\d+)$/); if (cm) lbl = cm[1];
-      var key = findLabel(lbl);
-      if (!key) return whole;
-      return '<span class="' + (escaped ? "citec" : "cite") + '" data-go="' + key + '">' + whole + "</span>";
-    });
-}
-
-function highlightLean(code) {
-  var out = "", i = 0, n = code.length;
-  function push(cls, txt) { out += '<span class="' + cls + '">' + txt + "</span>"; }
-  while (i < n) {
-    var c = code[i];
-    if (c === "/" && code[i + 1] === "-") {
-      var d = 0, j = i;
-      while (j < n) {
-        if (code[j] === "/" && code[j + 1] === "-") { d++; j += 2; }
-        else if (code[j] === "-" && code[j + 1] === "/") { d--; j += 2; if (!d) break; }
-        else j++;
-      }
-      push("cm", leanCite(esc(code.slice(i, j)), true)); i = j; continue;
-    }
-    if (c === "-" && code[i + 1] === "-" && (i === 0 || /[\s(\[]/.test(code[i - 1]))) {
-      var e = code.indexOf("\n", i); e = e < 0 ? n : e;
-      push("cm", leanCite(esc(code.slice(i, e)), true)); i = e; continue;
-    }
-    if (c === '"') {
-      var k = i + 1;
-      while (k < n) { if (code[k] === "\\") { k += 2; continue; } if (code[k] === '"') { k++; break; } k++; }
-      push("st", esc(code.slice(i, k))); i = k; continue;
-    }
-    if (c === "@" && code[i + 1] === "[") {
-      var q = code.indexOf("]", i); q = q < 0 ? n : q + 1;
-      push("at", esc(code.slice(i, q))); i = q; continue;
-    }
-    if (IDCH.test(c) && !/[0-9]/.test(c)) {
-      var p = i; while (p < n && IDCH.test(code[p])) p++;
-      var w = code.slice(i, p);
-      if (w === "sorry") push("srr", w);
-      else if (KW.has(w)) {
-        push("kw", w);
-        /* declaration name right after a declaration keyword */
-        if (/^(theorem|lemma|def|abbrev|structure|inductive|instance|class)$/.test(w)) {
-          var r = p; while (r < n && code[r] === " ") r++;
-          var t = r; while (t < n && IDCH.test(code[t])) t++;
-          if (t > r) { out += code.slice(p, r); push("nm2", esc(code.slice(r, t))); p = t; }
-        }
-      }
-      else out += esc(w);
-      i = p; continue;
-    }
-    if (/[0-9]/.test(c)) { var z = i; while (z < n && /[0-9.]/.test(code[z])) z++; push("num", code.slice(i, z)); i = z; continue; }
-    out += esc(c); i++;
-  }
-  return out;
-}
-
-/* lean docstrings are prose with markdown-ish accents */
-function docToHtml(doc) {
-  if (!doc) return "";
-  var s = esc(doc);
-  s = s.replace(/`([^`\n]+)`/g, function (_, c) { return "<code>" + c + "</code>"; });
-  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  s = s.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
-  s = leanCite(s, false);
-  return s.split(/\n\s*\n/).map(function (p) { return "<p>" + p.trim().replace(/\n/g, " ") + "</p>"; }).join("");
-}
-
-/* =========================================================================
    state
    ========================================================================= */
 
@@ -290,35 +201,58 @@ function paperShow(keys, focus) {
   });
 }
 
-function declCard(leanKey, links, open) {
-  var parts = leanKey.split("::"), fname = parts[0], dname = parts[1];
+/* ---- the machine page -------------------------------------------------- */
+
+/* the lines a citation occupies: the declaration it belongs to, docstring
+   included, or the citing line itself when the citation is module prose */
+function leanRange(leanKey, links) {
   var d = DECL[leanKey];
-  var f = FILE[fname];
-  var lines = links.map(function (l) { return l.line; }).sort(function (a, b) { return a - b; });
-  var h = '<details class="decl focus"' + (open ? " open" : "") + ">";
-  h += '<summary class="dh"><span class="k">' + (d ? d.kind : "module") + "</span>";
-  h += '<span class="n">' + esc(dname) + "</span>";
-  if (d && d.has_sorry) h += '<span class="why" style="color:#e06c6c;border-color:#7a3030">sorry</span>';
+  if (d) return { from: d.doc_line || d.line, to: d.end_line };
+  var ls = links.map(function (l) { return l.line; });
+  return { from: Math.min.apply(null, ls), to: Math.max.apply(null, ls) };
+}
+
+/* the bar above the file: what cites this, and where else it is cited */
+function leanHead(keys, focus, groups, total) {
+  var parts = keys[focus].split("::"), fname = parts[0], dname = parts[1];
+  var d = DECL[keys[focus]];
+  var files = {}; keys.forEach(function (k) { files[k.split("::")[0]] = 1; });
+  var nf = Object.keys(files).length;
+
+  var h = "<b>" + total + "</b> citation" + (total > 1 ? "s" : "") +
+          " · <b>" + keys.length + "</b> declaration" + (keys.length > 1 ? "s" : "") +
+          " · " + nf + " file" + (nf > 1 ? "s" : "");
+  h += '<span class="vid"><span class="k">' + (d ? d.kind : "module") + "</span>" +
+       '<span class="n">' + esc(dname) + "</span>";
+  if (d && d.has_sorry) h += '<span class="srrtag">sorry</span>';
   if (d && d.section) h += '<span class="k">' + esc(d.section) + "</span>";
-  h += '<span class="loc">' + esc(fname) + ".lean:" + (d ? d.line : lines[0]) + "</span></summary>";
+  h += '<span class="loc">' + esc(fname) + ".lean:" +
+       (d ? d.line : leanRange(keys[focus], groups[keys[focus]]).from) + "</span></span>";
 
-  if (d && d.doc) h += '<div class="doc">' + docToHtml(d.doc) + "</div>";
-  else if (!d) h += '<div class="doc">' + docToHtml(f ? f.module_doc : "") + "</div>";
-
-  var code = d ? d.code : "";
-  if (code) {
-    var arr = code.split("\n");
-    var CUT = 18;
-    if (arr.length > CUT) {
-      h += '<pre class="code">' + highlightLean(arr.slice(0, CUT).join("\n")) + "</pre>";
-      h += '<pre class="code hid" style="display:none">' + highlightLean(arr.slice(CUT).join("\n")) + "</pre>";
-      h += '<button class="fold">show ' + (arr.length - CUT) + " more lines</button>";
-    } else {
-      h += '<pre class="code">' + highlightLean(code) + "</pre>";
-    }
-  }
-  h += "</details>";
+  var chips = "";
+  keys.forEach(function (k, i) {
+    if (i === focus) return;
+    var p = k.split("::");
+    chips += '<span class="chip" data-decl="' + esc(k) + '">' +
+             (p[0] === fname ? "" : esc(p[0]) + ".") + esc(p[1]) + "</span>";
+  });
+  if (chips) h += '<div class="chips"><i>also</i>' + chips + "</div>";
   return h;
+}
+
+/* show one module, banding every cited declaration it holds */
+function leanShow(keys, focus, groups, total) {
+  var fname = keys[focus].split("::")[0];
+  vhead.innerHTML = leanHead(keys, focus, groups, total);
+  vhead.querySelectorAll("[data-decl]").forEach(function (el) {
+    el.onclick = function () { leanShow(keys, keys.indexOf(el.dataset.decl), groups, total); };
+  });
+
+  var same = keys.filter(function (k) { return k.split("::")[0] === fname; });
+  LeanView.load(fname, FILE[fname].text);
+  LeanView.show(same.map(function (k) { return leanRange(k, groups[k]); }),
+                same.indexOf(keys[focus]));
+  wire(verso);
 }
 
 function selectPaper(key) {
@@ -332,39 +266,27 @@ function selectPaper(key) {
     (groups[k] = groups[k] || []).push(l);
   });
   var keys = Object.keys(groups).sort();
-  var files = {}; keys.forEach(function (k) { files[k.split("::")[0]] = 1; });
-
-  vhead.innerHTML = links.length
-    ? "<b>" + links.length + "</b> citation" + (links.length > 1 ? "s" : "") +
-      " · <b>" + keys.length + "</b> declaration" + (keys.length > 1 ? "s" : "") +
-      " · " + Object.keys(files).length + " file" + (Object.keys(files).length > 1 ? "s" : "")
-    : "no Lean counterpart";
 
   if (!keys.length) {
-    verso.innerHTML = '<div class="pad"><div class="empty" style="color:var(--machine-dim)">' +
-      "<b style=\"color:var(--amber)\">" + esc(it.label) + "</b> is not cited anywhere in the Lean sources.<br><br>" +
+    vhead.innerHTML = "no Lean counterpart";
+    verso.innerHTML = '<div class="pad"><div class="empty">' +
+      "<b>" + esc(it.label) + "</b> is not cited anywhere in the Lean sources.<br><br>" +
       "Either it is out of the mechanization scope, or the citation is missing.<br>" +
       "Both are findings: this pane is the gap report." +
       "</div></div>";
+    LeanView.forget();
     return;
   }
-  var h = '<div class="pad">';
-  keys.forEach(function (k, i) {
-    h += declCard(k, groups[k], i === 0);
-  });
-  h += "</div>";
-  verso.innerHTML = h;
-  wire(verso);
+  leanShow(keys, 0, groups, links.length);
 }
 
 function selectLean(key) {
   var links = BY_DECL[key] || [];
-  verso.innerHTML = '<div class="pad">' + declCard(key, links, true) + "</div>";
-  vhead.innerHTML = "<b>" + key.split("::")[0] + ".lean</b> · " +
-    links.length + " citation" + (links.length > 1 ? "s" : "");
+  var groups = {}; groups[key] = links;
+  leanShow([key], 0, groups, links.length);
 
   /* every paper item this declaration cites is marked at once; the first
-     decides which of the two documents the scroll shows */
+     decides which document the scroll shows */
   var cited = [];
   links.forEach(function (l) {
     if (cited.indexOf(l.key) < 0 && TEX[l.key] && TEX[l.key].rect) cited.push(l.key);
@@ -382,7 +304,6 @@ function select(key) {
   if (state.mode === "paper") selectPaper(key); else selectLean(key);
   wire(verso);
   buildRail();
-  verso.parentElement.scrollTop = 0;
   location.hash = encodeURIComponent(key);
   var sel = railBody.querySelector(".itm.sel");
   if (sel) sel.scrollIntoView({ block: "nearest" });
@@ -495,7 +416,9 @@ function setMode(m) {
 /* ---- boot -------------------------------------------------------------- */
 
 function boot() {
-  railBody = $("#railbody"); rhead = $("#rhead"); verso = $("#verso"); vhead = $("#vhead");
+  railBody = $("#railbody"); rhead = $("#rhead"); vhead = $("#vhead");
+  verso = $("#leanpane");
+  LeanView.init(verso, $("#leanscroll"), function (label) { return findLabel(label); });
   PDFView.init($("#pdfpages"), $("#pdfscroll"), function (key) {
     if (state.mode !== "paper") { state.mode = "paper"; syncModes(); }
     select(key);

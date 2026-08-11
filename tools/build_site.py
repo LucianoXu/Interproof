@@ -55,6 +55,7 @@ def main() -> int:
         "/*MANIFEST*/": manifest,
         "/*PDFS*/": json.dumps(pdfs),
         "/*PDFVIEW*/": (SRC / "pdfview.js").read_text(encoding="utf-8"),
+        "/*LEANVIEW*/": (SRC / "leanview.js").read_text(encoding="utf-8"),
         "/*APPJS*/": (SRC / "app.js").read_text(encoding="utf-8"),
     }
     html = tpl
