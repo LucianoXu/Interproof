@@ -3,21 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Interproof — PQCPlus</title>
+<title>Interproof — <!--TITLE--></title>
+<!-- recto and verso, which is the whole idea.  Inline, because a page that
+     opens from a USB stick must not ask a server for anything — and because
+     the browser asks for /favicon.ico whether or not one exists, and a 404 in
+     the console of an artifact somebody was sent is a bad first impression. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23efe9dd'/%3E%3Crect x='16' width='16' height='32' fill='%23121210'/%3E%3Crect x='15' width='2' height='32' fill='%23a93c16'/%3E%3C/svg%3E">
 <style>/*FONTS*/</style>
 <style>/*APPCSS*/</style>
 </head>
 <body>
 <div id="app">
   <header>
-    <div class="brand"><b>Interproof</b><span>PQCPlus</span></div>
+    <div class="brand"><b>Interproof</b><span><!--TITLE--></span></div>
     <div class="hbar">
       <div id="stats" style="display:flex;gap:20px"></div>
+      <span class="live" id="live"></span>
       <div class="hspacer"></div>
       <span class="kbd">/</span><span style="color:var(--machine-rule)">search</span>
       <span class="kbd">j k</span><span style="color:var(--machine-rule)">move</span>
+      <button class="hbtn" id="helpbtn">Help &nbsp;?</button>
       <button class="hbtn" id="allbtn">Formalized &nbsp;a</button>
       <button class="hbtn" id="cleanbtn">Clean &nbsp;c</button>
+      <button class="hbtn" id="dlbtn">Download</button>
     </div>
   </header>
 
@@ -40,13 +48,17 @@
     <div class="vhead" id="vhead"></div>
     <div class="scroll" id="leanscroll"><div id="leanpane"></div></div>
   </section>
+
+  <div class="note" id="note"></div>
+  <div class="sheet" id="help" hidden><div class="sheetbody" id="helpbody"></div></div>
 </div>
 
 <script type="text/plain" id="pdfjs-lib">/*PDFJS*/</script>
 <script type="text/plain" id="pdfjs-worker">/*PDFJSWORKER*/</script>
-<script>window.__MANIFEST__=/*MANIFEST*/;window.__PDFS__=/*PDFS*/;</script>
+<script>window.__IP__=/*BOOT*/;</script>
 <script>/*PDFVIEW*/</script>
 <script>/*LEANVIEW*/</script>
+<script>/*DOWNLOAD*/</script>
 <script>/*APPJS*/</script>
 </body>
 </html>

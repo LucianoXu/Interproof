@@ -4,15 +4,82 @@
 (function () {
 "use strict";
 
-var M = window.__MANIFEST__;
-var TEX = M.tex, BY = M.by_item, LEAN = M.lean, LINKS = M.links;
-var PDFS = window.__PDFS__;          // doc -> the compiled PDF, base64
+/* The page is handed exactly one object, and it says where everything else
+   comes from.  A static build inlines the manifest and the PDFs; a served
+   build names the URLs they can be fetched from, and a stream that says when
+   they changed.  The whole difference between the two is spent in
+   loadManifest and pdfBytes below; the reading code is written once. */
+var BOOT = window.__IP__ || { mode: "static", manifest: {}, pdfs: {} };
 
-/* The document set comes from the manifest; this file names no document.
-   DOCS is in document order, which is also the order items sort in. */
-var DOCS = M.docs;
-var DOC = {}, DOCPOS = {};
-DOCS.forEach(function (d, i) { DOC[d.id] = d; DOCPOS[d.id] = i; });
+var M = null;                        // the manifest, once it has been read
+var TEX, BY, LEAN, LINKS, DOCS;
+var DOC, DOCPOS;                     // id -> document, and its place in reading order
+var DECL, FILE;                      // "File::name" -> decl, "File" -> file record
+var BY_DECL, BY_FILE;                // citations per declaration, and per module
+var USES, USEDBY;                    // the reference structure among declarations
+var HAS;                             // labels that exist, per document
+var DOCSTAT, LOCATED;
+
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function why(e) { return (e && e.message) ? e.message : String(e); }
+
+/* =========================================================================
+   the manifest, and the indexes read off it
+   ========================================================================= */
+
+/* Every index here is derived from one manifest, and in a live session the
+   manifest is replaced whole.  Building them in a function rather than at
+   load time is what lets a rebuild be a re-read instead of a page reload —
+   and an index left behind from the previous generation would be worse than
+   no index at all, because it would answer. */
+function ingest(m) {
+  M = m;
+  TEX = m.tex || {}; BY = m.by_item || {}; LEAN = m.lean || []; LINKS = m.links || [];
+
+  /* The document set comes from the manifest; this file names no document.
+     DOCS is in document order, which is also the order items sort in. */
+  DOCS = m.docs || [];
+  DOC = {}; DOCPOS = {};
+  DOCS.forEach(function (d, i) { DOC[d.id] = d; DOCPOS[d.id] = i; });
+
+  DECL = {}; FILE = {};
+  LEAN.forEach(function (f) {
+    FILE[f.name] = f;
+    (f.decls || []).forEach(function (d) { DECL[f.name + "::" + d.name] = d; });
+  });
+
+  /* citations grouped by lean declaration, and per module, for the file index */
+  BY_DECL = {}; BY_FILE = {};
+  LINKS.forEach(function (l) {
+    var k = l.file + "::" + (l.decl || "⟨module⟩");
+    (BY_DECL[k] = BY_DECL[k] || []).push(l);
+    BY_FILE[l.file] = (BY_FILE[l.file] || 0) + 1;
+  });
+
+  /* the reference structure among Lean declarations.  `uses` — what a
+     declaration names in its own code — is in the manifest; what uses it
+     exists only as the sum of every other declaration's, so it is inverted
+     here. */
+  USES = {}; USEDBY = {};
+  LEAN.forEach(function (f) {
+    (f.decls || []).forEach(function (d) {
+      var k = f.name + "::" + d.name;
+      USES[k] = d.uses || [];
+      USES[k].forEach(function (t) { (USEDBY[t] = USEDBY[t] || []).push(k); });
+    });
+  });
+
+  /* labels that exist, per document — for xref resolution */
+  HAS = {};
+  Object.keys(TEX).forEach(function (k) { HAS[k] = true; });
+
+  LOCATED = {};                      // placements are cached per document
+  expand = {};                       // a new manifest, a new set of neighbours
+  DOCSTAT = docStats();
+}
 
 /* resolve a bare label against the documents, preferring one of them */
 function findLabel(label, prefer) {
@@ -24,41 +91,74 @@ function findLabel(label, prefer) {
   return null;
 }
 
-/* ---- lean index -------------------------------------------------------- */
-var DECL = {};                       // "File::name" -> decl
-var FILE = {};                       // "File" -> file record
-LEAN.forEach(function (f) {
-  FILE[f.name] = f;
-  f.decls.forEach(function (d) { DECL[f.name + "::" + d.name] = d; });
-});
+/* ---- fetching ---------------------------------------------------------- */
 
-/* citations grouped by lean declaration, and per module, for the file index */
-var BY_DECL = {};                    // "File::name" (or "File::⟨module⟩") -> links
-var BY_FILE = {};                    // "File" -> citation count
-LINKS.forEach(function (l) {
-  var k = l.file + "::" + (l.decl || "⟨module⟩");
-  (BY_DECL[k] = BY_DECL[k] || []).push(l);
-  BY_FILE[l.file] = (BY_FILE[l.file] || 0) + 1;
-});
+var RAW = null;                      // the manifest text last ingested, live only
 
-/* the reference structure among Lean declarations.  `uses` — what a
-   declaration names in its own code — is in the manifest; what uses it exists
-   only as the sum of every other declaration's, so it is inverted here. */
-var USES = {}, USEDBY = {};
-LEAN.forEach(function (f) {
-  f.decls.forEach(function (d) {
-    var k = f.name + "::" + d.name;
-    USES[k] = d.uses || [];
-    USES[k].forEach(function (t) { (USEDBY[t] = USEDBY[t] || []).push(k); });
+/* Resolves to the manifest — or to null when a rebuild left it byte for byte
+   the same.  A generation is bumped by any successful build, including one
+   that only touched a file nothing in the correspondence reads; re-rendering
+   for that would cost the reader a flicker and tell them nothing. */
+function loadManifest() {
+  // carried, or named — the mode says which is expected, the payload decides
+  if (BOOT.manifest) return Promise.resolve(BOOT.manifest);
+  return fetch(BOOT.manifest_url, { cache: "no-store" }).then(function (r) {
+    if (!r.ok) throw new Error("manifest — " + r.status + " " + r.statusText);
+    return r.text();
+  }).then(function (t) {
+    if (t === RAW) return null;
+    RAW = t;
+    return JSON.parse(t);
   });
-});
+}
 
-/* labels that exist, per document — for xref resolution */
-var HAS = {};
-Object.keys(TEX).forEach(function (k) { HAS[k] = true; });
+/* The compiled document, as bytes, whichever build this is.  Memoised because
+   a selection re-opens the document it is already reading; the entry is what
+   `forget` drops when a rebuild says the PDF itself moved. */
+var BYTES = {};                      // id -> Promise<Uint8Array>
 
-function esc(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function pdfBytes(id) {
+  if (BYTES[id]) return BYTES[id];
+  var b64 = BOOT.pdfs && BOOT.pdfs[id];
+  var p;
+  if (b64) {
+    p = new Promise(function (ok) {
+      ok(Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); }));
+    });
+  } else if (BOOT.pdf_url) {
+    // a static build can also be a folder rather than one file, and then the
+    // documents sit beside the page instead of inside it
+    p = fetch(BOOT.pdf_url + id + ".pdf", { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error(id + ".pdf — " + r.status + " " + r.statusText);
+      return r.arrayBuffer();
+    }).then(function (b) { return new Uint8Array(b); });
+  } else {
+    p = Promise.reject(new Error("this build says nothing about where " + id + ".pdf is"));
+  }
+  // a failure is not an answer worth keeping: in a live session the server may
+  // simply have been mid-build, and the next selection should ask again
+  p = p.catch(function (e) { delete BYTES[id]; throw e; });
+  BYTES[id] = p;
+  return p;
+}
+
+/* The one place the paper pane is fed.  Opening a document is slow enough to
+   need saying so (a live server may still be inside latexmk) and can fail
+   outright (the run may have produced no PDF at all).  It resolves to whether
+   the document is on screen, because a caller that goes on to band an item
+   would otherwise be banding the previous document. */
+function openPDF(id, items) {
+  var slow = setTimeout(function () { note("opening " + id + ".pdf…"); }, 400);
+  return pdfBytes(id).then(function (bytes) {
+    return PDFView.load(id, bytes, items);
+  }).then(function () {
+    clearTimeout(slow); note("");
+    return true;
+  }).catch(function (e) {
+    clearTimeout(slow);
+    note(id + ".pdf could not be opened — " + why(e), "err");
+    return false;
+  });
 }
 
 /* =========================================================================
@@ -72,7 +172,23 @@ var state = { mode: "paper", sel: null, q: "", proof: false, fdoc: null, ffile: 
               all: false, marked: [], clean: false };
 
 var $ = function (s) { return document.querySelector(s); };
-var railBody, rhead, verso, vhead;
+var railBody, rhead, verso, vhead, rscroll, vscroll, noteEl, liveEl;
+
+/* ---- what the viewer is doing ------------------------------------------ */
+
+/* One strip, fixed to the frame rather than put inside a pane: the pane may
+   itself be the thing that failed to load.  A failure stays until something
+   replaces it — a viewer that swallowed the reason a document is missing
+   would leave the reader looking at the previous one and believing it. */
+var noteT = null;
+function note(msg, cls) {
+  if (!noteEl) return;
+  clearTimeout(noteT);
+  noteEl.className = "note" + (cls ? " " + cls : "");
+  noteEl.textContent = msg || "";
+  noteEl.style.display = msg ? "block" : "none";
+  if (msg && cls !== "err") noteT = setTimeout(function () { note(""); }, 7000);
+}
 
 function itemsOrdered() {
   return Object.keys(TEX).map(function (k) { return [k, TEX[k]]; })
@@ -89,14 +205,17 @@ var KINDSHORT = { theorem: "thm", lemma: "lem", definition: "def", proposition: 
 
 /* what each document holds, for the file index: labelled items, and how many
    of them a Lean module cites */
-var DOCSTAT = {};
-DOCS.forEach(function (d) { DOCSTAT[d.id] = { items: 0, linked: 0 }; });
-itemsOrdered().forEach(function (e) {
-  var s = DOCSTAT[e[1].doc];
-  if (!s) return;
-  s.items++;
-  if ((BY[e[0]] || []).length) s.linked++;
-});
+function docStats() {
+  var out = {};
+  DOCS.forEach(function (d) { out[d.id] = { items: 0, linked: 0 }; });
+  itemsOrdered().forEach(function (e) {
+    var s = out[e[1].doc];
+    if (!s) return;
+    s.items++;
+    if ((BY[e[0]] || []).length) s.linked++;
+  });
+  return out;
+}
 
 /* the Lean sources by directory — the file index mirrors the tree rather than
    flattening it, because in a formalization the directory is the first thing
@@ -118,6 +237,7 @@ function leanTree() {
 /* ---- rail -------------------------------------------------------------- */
 
 function buildRail() {
+  if (!M) return;
   var q = state.q.toLowerCase();
   var html = "", n = 0;
 
@@ -214,7 +334,6 @@ function buildRail() {
 /* ---- the paper page ---------------------------------------------------- */
 
 /* every placed item of a document, so a followed PDF link can be named */
-var LOCATED = {};
 function located(doc) {
   if (!LOCATED[doc]) {
     LOCATED[doc] = Object.keys(TEX)
@@ -371,10 +490,12 @@ function paperHeadShow(keys, focus) {
   });
 }
 
-/* put the marks in the scroll and bring the focused one into view */
+/* put the marks in the scroll and bring the focused one into view.  It
+   resolves when the page is on screen, so a caller that has a scroll position
+   to put back knows when there is something to put it back into. */
 function paperShow(keys, focus) {
   var it = TEX[keys[focus]];
-  if (!it) return;
+  if (!it) return Promise.resolve();
   state.marked = keys;               // these carry their own band; no overlay
   paperHeadShow(keys, focus);
 
@@ -386,7 +507,8 @@ function paperShow(keys, focus) {
   });
   var idx = same.indexOf(keys[focus]);
 
-  PDFView.load(it.doc, PDFS[it.doc], located(it.doc)).then(function () {
+  return openPDF(it.doc, located(it.doc)).then(function (ok) {
+    if (!ok) return;
     PDFView.show(rects.filter(Boolean), idx);
     PDFView.repaintMarks();
   });
@@ -506,7 +628,8 @@ function leanShow(keys, focus, groups, total) {
 
 function selectPaper(key) {
   var it = TEX[key];
-  paperShow([key], 0);
+  if (!it) return Promise.resolve();
+  var opened = paperShow([key], 0);
 
   var links = BY[key] || [];
   var groups = {};
@@ -524,12 +647,14 @@ function selectPaper(key) {
       "Both are findings: this pane is the gap report." +
       "</div></div>";
     LeanView.forget();
-    return;
+    return opened;
   }
   leanShow(keys, 0, groups, links.length);
+  return opened;
 }
 
 function selectLean(key) {
+  if (!BY_DECL[key] && !DECL[key]) return Promise.resolve();
   var links = BY_DECL[key] || [];
   var groups = {}; groups[key] = links;
   leanShow([key], 0, groups, links.length);
@@ -545,9 +670,9 @@ function selectLean(key) {
     state.marked = [];
     PDFView.clear();
     PDFView.repaintMarks();
-    return;
+    return Promise.resolve();
   }
-  paperShow(cited, 0);
+  return paperShow(cited, 0);
 }
 
 /* ---- the file index ---------------------------------------------------- */
@@ -594,8 +719,8 @@ function showDocument(id) {
   state.marked = [];
   rhead.innerHTML = docFileHead(id);
   wireZoom(rhead);
-  PDFView.load(id, PDFS[id], located(id)).then(function () {
-    if (state.mode !== "files" || state.fdoc !== id) return;
+  return openPDF(id, located(id)).then(function (ok) {
+    if (!ok || state.mode !== "files" || state.fdoc !== id) return;
     PDFView.clear();                       // a file is open, no item is selected
     PDFView.repaintMarks();
     if (moved) PDFView.top();
@@ -620,7 +745,9 @@ function showModule(name) {
 function selectFiles(key) {
   var cut = key.indexOf("::");
   var what = key.slice(0, cut), id = key.slice(cut + 2);
-  if (what === "paper") showDocument(id); else showModule(id);
+  if (what === "paper") return showDocument(id);
+  showModule(id);
+  return Promise.resolve();
 }
 
 /* entering the mode moves no scroll position: whatever the two pages were
@@ -628,26 +755,31 @@ function selectFiles(key) {
 function enterFiles(key) {
   var want = key ? key.slice(0, key.indexOf("::")) : "";
   var id = key ? key.slice(key.indexOf("::") + 2) : "";
-  state.fdoc = (want === "paper" ? id : null) || state.fdoc || PDFView.doc() || DOCS[0].id;
-  state.ffile = (want === "lean" ? id : null) || state.ffile || LeanView.file() || LEAN[0].name;
-  showDocument(state.fdoc);
-  showModule(state.ffile);
+  var d0 = DOCS[0] ? DOCS[0].id : null, f0 = LEAN[0] ? LEAN[0].name : null;
+  state.fdoc = (want === "paper" ? id : null) || state.fdoc || PDFView.doc() || d0;
+  state.ffile = (want === "lean" ? id : null) || state.ffile || LeanView.file() || f0;
+  var opened = state.fdoc ? showDocument(state.fdoc) : Promise.resolve();
+  if (state.ffile) showModule(state.ffile);
   state.sel = key || "paper::" + state.fdoc;
   buildRail();
   location.hash = encodeURIComponent(state.sel);
+  return opened;
 }
 
 function select(key) {
+  if (!M) return Promise.resolve();
   state.sel = key;
   expand = {};                       // a new selection, a new set of neighbours
-  if (state.mode === "paper") selectPaper(key);
-  else if (state.mode === "files") selectFiles(key);
-  else selectLean(key);
+  var opened;
+  if (state.mode === "paper") opened = selectPaper(key);
+  else if (state.mode === "files") opened = selectFiles(key);
+  else opened = selectLean(key);
   wire(verso);
   buildRail();
   location.hash = encodeURIComponent(key);
   var sel = railBody.querySelector('.itm[data-key="' + key + '"]');
   if (sel) sel.scrollIntoView({ block: "nearest" });
+  return opened || Promise.resolve();
 }
 
 function wire(root) {
@@ -680,7 +812,7 @@ function syncModes() {
 }
 
 function setMode(m) {
-  if (state.mode === m) return;
+  if (!M || state.mode === m) return;
   state.mode = m;
   syncModes();
   if (m === "files") { enterFiles(null); return; }
@@ -702,26 +834,349 @@ function modeOf(k) {
   return null;
 }
 
+/* ---- the first entry of a mode ----------------------------------------- */
+
+/* Asked when the key that was being read is not in the manifest any more.
+   The rail already answers this — it is the list of everything reachable in
+   the current mode, in the order the mode puts it — so it is asked rather
+   than a second ordering being written here. */
+function firstKey() {
+  buildRail();
+  var first = railBody.querySelector(".itm");
+  return first ? first.dataset.key : null;
+}
+
+/* =========================================================================
+   live
+   ========================================================================= */
+
+/* A served session is a moving target: the author edits, the server rebuilds,
+   and the page follows.  What the stream carries is only a generation number;
+   the manifest is re-fetched, because the difference that matters is between
+   two whole manifests and the server should not have to describe it. */
+
+var GEN = null, STAMP = "", ES = null, BAD = false;
+
+/* a LaTeX error runs for a page and says what it has to say in the first
+   lines; the terminal that ran the build has the rest */
+function cut(s, n) { s = String(s); return s.length > n ? s.slice(0, n) + "…" : s; }
+
+function liveMark(cls, text) {
+  if (!liveEl) return;
+  liveEl.className = "live " + cls;
+  liveEl.innerHTML = "<i></i>" + esc(text + (STAMP ? " · " + STAMP : ""));
+}
+
+function stamped() {
+  var d = new Date();
+  STAMP = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+  liveMark("on", "live");
+}
+
+/* everything that says where the reader is, and would otherwise be spent by a
+   re-render: the mode and its selection, the filter, the two toggles, both
+   scroll positions, and the zoom */
+function snapshot() {
+  return { mode: state.mode, sel: state.sel, q: state.q, all: state.all,
+           clean: state.clean, proof: state.proof, fdoc: state.fdoc, ffile: state.ffile,
+           pdf: rscroll ? rscroll.scrollTop : 0, lean: vscroll ? vscroll.scrollTop : 0,
+           scale: PDFView.scale(), fit: PDFView.fitting() };
+}
+
+/* A rebuild is not a navigation.  The one thing that can be gone is the key
+   itself — the author deleted the theorem, or renamed the module — and that
+   is said out loud and stepped back from, never thrown. */
+function restore(s) {
+  state.q = s.q; state.proof = s.proof;
+  state.fdoc = DOC[s.fdoc] ? s.fdoc : null;
+  state.ffile = FILE[s.ffile] ? s.ffile : null;
+  state.mode = s.mode;
+  syncModes();
+  if (state.all !== s.all) toggleAll(s.all);
+  if (state.clean !== s.clean) toggleClean(s.clean);
+
+  var key = s.sel, lost = "";
+  if (modeOf(key) !== state.mode) {
+    state.sel = null;
+    var fallback = firstKey();
+    if (!fallback) {
+      note("this build holds nothing to read in " + state.mode + " mode", "err");
+      return Promise.resolve();
+    }
+    lost = (key ? key + " is gone from the rebuilt manifest" : "nothing was selected") +
+           " — showing " + fallback + " instead";
+    key = fallback;
+  }
+
+  var opened = state.mode === "files" ? enterFiles(key) : select(key);
+  return Promise.resolve(opened).then(function () {
+    /* after the layout the new manifest asked for, not before it: the pages
+       are what the scroll offsets are measured against.  Selecting scrolled
+       to the band the reader was already looking at, which is close but not
+       where they left the page. */
+    requestAnimationFrame(function () {
+      if (!s.fit) PDFView.setScale(s.scale);
+      if (rscroll) rscroll.scrollTop = s.pdf;
+      if (vscroll) vscroll.scrollTop = s.lean;
+      // nothing is cleared here: if opening the rebuilt document failed, that
+      // note is the last true thing said about this pane
+      if (lost) note(lost, "warn");
+      stamped();
+    });
+  });
+}
+
+function refresh() {
+  liveMark("wait", "rebuilding");
+  return loadManifest().then(function (m) {
+    if (!m) { stamped(); return; }   // the rebuild moved nothing this page reads
+    var was = snapshot(), revs = {};
+    DOCS.forEach(function (d) { revs[d.id] = d.rev; });
+    ingest(m);
+    /* Only a document whose bytes moved is dropped.  A Lean edit rebuilds the
+       manifest without touching a PDF, and re-parsing it would blank the page
+       the reader is looking at to arrive at the same page. */
+    Object.keys(revs).forEach(function (id) {
+      if (DOC[id] && DOC[id].rev === revs[id]) return;
+      delete BYTES[id];
+      PDFView.forget(id);
+    });
+    renderStats();
+    return restore(was);
+  }).catch(function (e) {
+    note("the rebuild could not be read — " + why(e), "err");
+    liveMark("off", "stale");
+  });
+}
+
+function connect() {
+  liveMark("wait", "connecting");
+  ES = new EventSource(BOOT.events_url);
+  ES.onopen = function () { liveMark("on", "live"); };
+  // EventSource reconnects on its own; saying the connection is gone is the
+  // whole job here, because a page that stopped following looks identical to
+  // one that is up to date
+  ES.onerror = function () { liveMark("off", "offline"); };
+  ES.onmessage = function (ev) {
+    var d = null;
+    try { d = JSON.parse(ev.data); } catch (err) { return; }
+    if (!d) return;
+    /* A failed build is published with the generation unchanged: the server
+       goes on serving the last one that worked, and this event is the only
+       way the page can learn that what it shows is no longer what is on disk.
+       Saying so is the whole point — the alternative is a reader wondering
+       why their edit did not arrive. */
+    if (d.ok === false) {
+      BAD = true;
+      liveMark("bad", "build failed");
+      note(cut(d.error || "the build failed", 400), "err");
+      return;
+    }
+    if (BAD) { BAD = false; note(""); }
+    if (typeof d.gen !== "number") return;
+    if (d.gen === GEN) { liveMark("on", "live"); return; }
+    GEN = d.gen;
+    refresh();
+  };
+}
+
+/* =========================================================================
+   the archive
+   ========================================================================= */
+
+/* download.js is loaded before this file and holds no data of its own: it
+   reads the manifest and the PDFs through here, so exactly one place knows
+   how this build was made. */
+var bridge = {
+  boot: BOOT,
+  manifest: function () { return M; },
+  pdfBytes: pdfBytes,
+};
+window.Interproof = bridge;
+
+function wireDownload() {
+  var btn = $("#dlbtn");
+  if (!btn || !window.Download) return;
+  var label = btn.textContent;
+  function done() { btn.disabled = false; btn.textContent = label; }
+  btn.onclick = function () {
+    if (btn.disabled || !M) return;
+    btn.disabled = true;
+    btn.textContent = "Packing";
+    Download.build(bridge, function (n, total) {
+      btn.textContent = "Packing " + Math.round(n / total * 100) + "%";
+    }).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = Download.filename(bridge);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // revoking in the same turn cancels the download in some browsers: the
+      // click starts a read of the object, it does not finish one
+      setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+      done();
+    }).catch(function (e) {
+      note("the archive could not be built — " + why(e), "err");
+      done();
+    });
+  };
+}
+
 /* ---- boot -------------------------------------------------------------- */
+
+function renderStats() {
+  var s = M.stats || {};
+  $("#stats").innerHTML =
+    '<div class="stat acc"><b>' + (s.links || 0) + "</b>links</div>" +
+    '<div class="stat"><b>' + (s.unresolved || 0) + "</b>dangling</div>";
+}
+
+/* the hash decides the mode, and the mode decides what opens when it does not */
+function start(key) {
+  state.mode = modeOf(key) || "paper";
+  syncModes();
+  if (state.mode === "files") return enterFiles(key);
+  buildRail();
+  if (!modeOf(key)) key = firstKey();
+  if (!key) {
+    note("this build holds no items to read", "err");
+    return Promise.resolve();
+  }
+  return select(key);
+}
+
+/* ---- help -------------------------------------------------------------- */
+
+/* A reader arriving at a published artifact has the page and nothing else: no
+   README, no repository, often no idea that the two panes are linked by
+   citations somebody wrote in the Lean sources.  So the page explains itself,
+   and it does it with *this* project's own numbers and its own citations —
+   a generic help text would leave the one question a newcomer actually has,
+   "what am I looking at here", answered somewhere they cannot reach. */
+
+function sample(via) {
+  for (var i = 0; i < LINKS.length; i++) {
+    if (LINKS[i].via === via && LINKS[i].context) return LINKS[i];
+  }
+  return null;
+}
+
+function helpCitation(l) {
+  if (!l) return "";
+  var c = l.context.length > 150 ? l.context.slice(0, 150) + "…" : l.context;
+  return '<div class="hsample"><code>' + esc(c) + "</code><i>" +
+         esc(l.file) + ".lean:" + l.line + " &rarr; " + esc(l.key) + "</i></div>";
+}
+
+function helpHTML() {
+  var s = M.stats, docs = DOCS.map(function (d) { return d.title; }).join(" · ");
+  var h = '<button class="hclose" id="helpclose">close &nbsp;esc</button>';
+  h += "<h2>" + esc((M.project && M.project.title) || "Interproof") + "</h2>";
+  h += "<p>The left page is the <b>compiled PDF</b> of " + esc(docs) +
+       " — the typeset document itself, not a re-rendering of its source. " +
+       "The right page is the formalization, as the file on disk. " +
+       "They are linked by the citations already written in the formal " +
+       "sources: a comment that names a statement of the paper is what puts " +
+       "the two on screen together.</p>";
+
+  h += "<h3>keys</h3><table class='hkeys'>" +
+       row("/", "filter the index — also brings it back when it is hidden") +
+       row("j k", "move the selection") +
+       row("a", "<b>Formalized</b>: mark every statement with a counterpart, at once") +
+       row("c", "<b>Clean</b>: put the apparatus away, leaving the two documents") +
+       row("?", "this page") +
+       row("esc", "close this, or leave Clean") +
+       "</table>";
+
+  h += "<h3>the three indexes</h3><ul>" +
+       "<li><b>Paper&rarr;Lean</b> — pick a statement; the right page opens the " +
+       "module that cites it, scrolled to the declaration and banded.</li>" +
+       "<li><b>Lean&rarr;Paper</b> — pick a declaration; the paper marks every " +
+       "statement it claims to be.</li>" +
+       "<li><b>Files</b> — the two source trees as they sit on disk, the only " +
+       "index that does not go through the correspondence. Modules are in " +
+       "<i>import order</i>, so the list reads as the development is built up." +
+       "</li></ul>";
+
+  h += "<h3>how the link is made</h3>" +
+       "<p>A comment in the formal sources names a statement of the paper, by " +
+       "label or by title. Both forms count, and both are read from this " +
+       "project's own sources:</p>" +
+       helpCitation(sample("label")) + helpCitation(sample("title")) +
+       "<p>Nothing is annotated in the paper, and nothing is verified: a " +
+       "citation says a declaration <i>claims</i> to be a statement. The two " +
+       "texts are put side by side so you can check that in a second.</p>";
+
+  h += "<h3>this run</h3><table class='hkeys'>" +
+       row(s.links + "", "citations, " + s.links_by_title + " of them by title, " +
+           "reaching " + s.linked_items + " distinct statements") +
+       row(s.tex_items + "", "statements in " + DOCS.length + " document" +
+           (DOCS.length === 1 ? "" : "s") + ", " + s.located + " placed on a page") +
+       row(s.lean_decls + "", "declarations over " + s.lean_lines.toLocaleString() +
+           " lines in " + s.lean_files + " modules") +
+       row(s.tex_refs + " / " + s.decl_refs, "cross-references within the paper " +
+           "and within the formalization") +
+       row(s.unresolved + "", s.unresolved
+           ? "<b class='bad'>dangling citations</b> — they name something no " +
+             "document holds, which means one side was renamed and the other " +
+             "was not"
+           : "dangling citations: every citation resolves") +
+       "</table>";
+
+  if (s.unresolved) {
+    var seen = {};
+    (M.unresolved || []).forEach(function (u) {
+      (seen[u.label] = seen[u.label] || []).push(u.file + ".lean:" + u.line);
+    });
+    h += "<ul class='bad'>";
+    Object.keys(seen).sort().forEach(function (k) {
+      h += "<li><code>" + esc(k) + "</code> — " + esc(seen[k].slice(0, 4).join(", ")) +
+           "</li>";
+    });
+    h += "</ul>";
+  }
+
+  h += "<h3>taking it with you</h3>" +
+       "<p><b>Download</b>, top right, packs this page, the PDFs, the LaTeX and " +
+       "the formal sources, and the configuration that produced them, into one " +
+       "archive. Built by <code>" + esc(M.tool || "interproof") + "</code>" +
+       (M.generated ? " on " + esc(M.generated.slice(0, 10)) : "") + ".</p>";
+  return h;
+}
+
+function row(k, v) {
+  return "<tr><td><span class='kbd'>" + esc(k) + "</span></td><td>" + v + "</td></tr>";
+}
+
+function toggleHelp(on) {
+  var el = $("#help");
+  var show = on === undefined ? el.hidden : on;
+  if (show && M) el.querySelector("#helpbody").innerHTML = helpHTML();
+  el.hidden = !show || !M;
+  $("#helpbtn").classList.toggle("on", !el.hidden);
+  var c = el.querySelector("#helpclose");
+  if (c) c.onclick = function () { toggleHelp(false); };
+}
 
 function boot() {
   railBody = $("#railbody"); rhead = $("#rhead"); vhead = $("#vhead");
-  verso = $("#leanpane");
-  LeanView.init(verso, $("#leanscroll"), function (label) { return findLabel(label); });
-  PDFView.init($("#pdfpages"), $("#pdfscroll"), function (key) {
+  verso = $("#leanpane"); noteEl = $("#note"); liveEl = $("#live");
+  rscroll = $("#pdfscroll"); vscroll = $("#leanscroll");
+  LeanView.init(verso, vscroll, function (label) { return findLabel(label); });
+  PDFView.init($("#pdfpages"), rscroll, function (key) {
     if (state.mode !== "paper") { state.mode = "paper"; syncModes(); }
     select(key);
   }, allMarks);
-
-  $("#stats").innerHTML =
-    '<div class="stat acc"><b>' + M.stats.links + "</b>links</div>" +
-    '<div class="stat"><b>' + M.stats.unresolved + "</b>dangling</div>";
 
   document.querySelectorAll(".modes button").forEach(function (b) {
     b.onclick = function () { setMode(b.dataset.mode); };
   });
   $("#cleanbtn").onclick = function () { toggleClean(); };
   $("#allbtn").onclick = function () { toggleAll(); };
+  $("#helpbtn").onclick = function () { toggleHelp(); };
+  $("#help").onclick = function (e) { if (e.target === $("#help")) toggleHelp(false); };
   $("#search").oninput = function (e) { state.q = e.target.value; buildRail(); };
 
   document.addEventListener("keydown", function (e) {
@@ -731,9 +1186,13 @@ function boot() {
     }
     // asking to filter is asking for the rail back
     if (e.key === "/") { e.preventDefault(); toggleClean(false); $("#search").focus(); }
+    else if (e.key === "?") toggleHelp();
     else if (e.key === "a") toggleAll();
     else if (e.key === "c") toggleClean();
-    else if (e.key === "Escape") toggleClean(false);
+    // one escape, one thing put away: the sheet is on top, so it goes first
+    else if (e.key === "Escape") {
+      if (!$("#help").hidden) toggleHelp(false); else toggleClean(false);
+    }
     else if (e.key === "j" || e.key === "k") {
       var all = [].slice.call(railBody.querySelectorAll(".itm"));
       var i = all.findIndex(function (el) { return el.classList.contains("sel"); });
@@ -755,13 +1214,28 @@ function boot() {
     select(k);
   });
 
-  var start = decodeURIComponent((location.hash || "").slice(1));
-  state.mode = modeOf(start) || "paper";
-  syncModes();
-  if (state.mode === "files") { enterFiles(start); return; }
-  buildRail();
-  if (!modeOf(start)) start = itemsOrdered()[0][0];
-  select(start);
+  wireDownload();
+  if (BOOT.mode === "live") { liveEl.style.display = "flex"; liveMark("wait", "connecting"); }
+
+  /* Nothing above this point needed the manifest, and nothing below runs
+     without it.  A build that cannot be read is the one failure this viewer
+     cannot work around, so it is stated rather than left as an empty frame. */
+  note("reading the manifest…");
+  loadManifest().then(function (m) {
+    ingest(m);
+    note("");
+    renderStats();
+    var opened = start(decodeURIComponent((location.hash || "").slice(1)));
+    if (BOOT.mode === "live") connect();
+    return opened;
+  }, function (e) {
+    // the two failures are told apart, because they are fixed in different
+    // places: one is the build, the other is this file
+    note("the manifest could not be read — " + why(e), "err");
+    if (BOOT.mode === "live") liveMark("off", "no manifest");
+  }).catch(function (e) {
+    note("this build could not be opened — " + why(e), "err");
+  });
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

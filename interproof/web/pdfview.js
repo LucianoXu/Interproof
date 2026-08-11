@@ -172,13 +172,20 @@ function observe() {
   host.querySelectorAll(".pg").forEach(function (pg) { io.observe(pg); });
 }
 
-function load(name, url, items) {
+/* `bytes` is the document itself; where it came from — inlined base64 or a
+   fetch against a running server — is the caller's business, and this file has
+   no opinion about which build it is running under. */
+function load(name, bytes, items) {
   if (cur === name) { docs[cur].items = items; return Promise.resolve(); }
   var mine = ++seq;
   return boot().then(function (m) {
     if (docs[name]) return docs[name];
-    var bytes = Uint8Array.from(atob(url), function (c) { return c.charCodeAt(0); });
-    return m.getDocument({ data: bytes }).promise.then(function (pdf) {
+    // pdf.js takes *ownership* of the buffer it is handed: it transfers it to
+    // the worker, and the caller's view is detached the moment it does.  The
+    // caller memoises those bytes and the archive reads them back, so this
+    // hands over a copy.  Without it the download fails with a detached
+    // ArrayBuffer, and only for documents that have been opened.
+    return m.getDocument({ data: bytes.slice() }).promise.then(function (pdf) {
       var jobs = [];
       for (var i = 1; i <= pdf.numPages; i++) jobs.push(pdf.getPage(i));
       return Promise.all(jobs).then(function (pages) {
@@ -288,6 +295,16 @@ window.PDFView = {
     host = hostEl; scroller = scrollEl; onPick = pick; marksOf = marks;
   },
   load: load,
+  /* The document was recompiled: the parsed copy is about bytes that no longer
+     exist, and so is everything drawn from it.  The generation is stepped so a
+     render already in flight cannot paint the old page over the new one. */
+  forget: function (name) {
+    var d = docs[name];
+    if (!d) return;
+    delete docs[name];
+    if (d.pdf && d.pdf.destroy) d.pdf.destroy();
+    if (cur === name) { cur = null; seq++; host.innerHTML = ""; }
+  },
   show: show,
   clear: clear,
   repaintMarks: paintOverlay,
@@ -298,6 +315,9 @@ window.PDFView = {
     layout();
   },
   refit: function () { fit = true; layout(); },
+  /* put back a zoom the reader chose, across a reload they did not ask for */
+  setScale: function (s) { fit = false; scale = s; layout(); },
+  fitting: function () { return fit; },
   /* the pane changed width without the window doing so */
   resize: layout,
   top: function () { scroller.scrollTo({ top: 0 }); },
