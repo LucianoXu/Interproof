@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "interproof"
+version = "0.2.0"
+description = "A synchronized reader for a paper and its formalization: the compiled PDF beside the Lean sources, linked by the citations already in them."
+readme = "README.md"
+requires-python = ">=3.11"          # tomllib
+license = { file = "LICENSE" }
+authors = [{ name = "Yingte Xu" }]
+keywords = ["lean", "latex", "formalization", "synctex", "blueprint"]
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Mathematics",
+  "Topic :: Text Processing :: Markup :: LaTeX",
+]
+# No runtime dependencies.  The viewer is local code over a vendored pdf.js,
+# the parsers are source text, and the server is http.server: what this needs
+# that a Python install does not already have is a LaTeX toolchain, and no
+# package manager can supply that.
+dependencies = []
+
+[project.scripts]
+interproof = "interproof.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/LucianoXu/Interproof"
+
+[tool.hatch.build.targets.wheel]
+packages = ["interproof"]
+
+# `interproof init` drops the citation protocol into the project it configures,
+# and the protocol has one source: the document a reader finds on the
+# repository's front page.  Shipping a copy inside the wheel keeps them from
+# drifting apart, which two hand-maintained copies of the same prose always do.
+[tool.hatch.build.targets.wheel.force-include]
+"docs/CITING.md" = "interproof/data/CITING.md"
