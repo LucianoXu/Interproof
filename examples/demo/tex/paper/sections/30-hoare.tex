@@ -1,0 +1,103 @@
+\section{A Hoare logic}
+\label{sec:hoare}
+
+\begin{definition}[assertions]
+\label{def:assn}
+An \emph{assertion} is a predicate on stores, that is, a map
+$P : \Stores \to \mathrm{Prop}$. We write $\Assn$ for the assertions and use
+$P, Q, R$ for them throughout. Assertions are semantic objects; no assertion
+language is fixed, because none is needed for soundness.
+\end{definition}
+
+\begin{definition}[partial correctness triple]
+\label{def:triple}
+For $P, Q \in \Assn$ and a command $c$, the triple $\triple{P}{c}{Q}$ holds
+when
+\[
+  \forall \sigma, \tau .\;
+  P(\sigma) \;\wedge\; \bigstep{c}{\sigma}{\tau} \;\Rightarrow\; Q(\tau) .
+\]
+This is \emph{partial} correctness: a $c$ that never terminates satisfies every
+triple, since \Cref{def:bigstep} produces no derivation for it.
+\end{definition}
+
+\begin{definition}[assertion substitution]
+\label{def:subst}
+For $P \in \Assn$, a variable $x$ and an expression $a$, the assertion
+$P[a/x]$ is
+\[
+  P[a/x](\sigma) \;=\; P(\upd{\sigma}{x}{\sem{a}\sigma}) .
+\]
+Because assertions are semantic (\Cref{def:assn}), substitution is composition
+with an update rather than a syntactic operation.
+\end{definition}
+
+\begin{lemma}[skip rule]
+\label{lem:hoare-skip}
+$\triple{P}{\skipk}{P}$ holds for every $P$.
+\end{lemma}
+
+\begin{proof}
+The only rule of \Cref{def:bigstep} concluding $\bigstep{\skipk}{\sigma}{\tau}$
+forces $\tau = \sigma$.
+\end{proof}
+
+\begin{lemma}[assignment rule]
+\label{lem:hoare-assign}
+$\triple{P[a/x]}{x := a}{P}$ holds for every $P$, $x$ and $a$.
+\end{lemma}
+
+\begin{proof}
+Inverting the assignment rule of \Cref{def:bigstep} gives
+$\tau = \upd{\sigma}{x}{\sem{a}\sigma}$, which is exactly the store at which
+\Cref{def:subst} evaluates $P$.
+\end{proof}
+
+\begin{lemma}[sequencing rule]
+\label{lem:hoare-seq}
+If $\triple{P}{c_1}{Q}$ and $\triple{Q}{c_2}{R}$ then $\triple{P}{c_1;c_2}{R}$.
+\end{lemma}
+
+\begin{proof}
+Invert the sequencing rule of \Cref{def:bigstep} to obtain the intermediate
+store, and apply the two hypotheses in turn.
+\end{proof}
+
+\begin{lemma}[conditional rule]
+\label{lem:hoare-if}
+If $\triple{P \wedge b}{c_1}{Q}$ and $\triple{P \wedge \lnot b}{c_2}{Q}$, then
+\[
+  \triple{P}{\ifk\ b\ \thenk\ c_1\ \elsek\ c_2}{Q} ,
+\]
+where $P \wedge b$ denotes $\sigma \mapsto P(\sigma) \wedge \sem{b}\sigma =
+\mathsf{tt}$.
+\end{lemma}
+
+\begin{proof}
+Two cases, one per conditional rule of \Cref{def:bigstep}; each carries exactly
+the hypothesis on $\sem{b}\sigma$ that the corresponding premise needs.
+\end{proof}
+
+\begin{lemma}[loop rule]
+\label{lem:hoare-while}
+If $\triple{P \wedge b}{c}{P}$ then
+$\triple{P}{\whilek\ b\ \dok\ c}{P \wedge \lnot b}$.
+\end{lemma}
+
+\begin{proof}
+Induction on the derivation of $\bigstep{\whilek\ b\ \dok\ c}{\sigma}{\tau}$,
+generalising over $\sigma$. The $\mathsf{ff}$ case is immediate; the
+$\mathsf{tt}$ case applies the hypothesis to the body and the induction
+hypothesis to the remaining iterations.
+\end{proof}
+
+\begin{proposition}[rule of consequence]
+\label{prop:hoare-conseq}
+If $P' \Rightarrow P$ pointwise, $\triple{P}{c}{Q}$, and $Q \Rightarrow Q'$
+pointwise, then $\triple{P'}{c}{Q'}$.
+\end{proposition}
+
+\begin{proof}
+Immediate from \Cref{def:triple}: weaken the hypothesis before applying the
+triple and strengthen its conclusion afterwards.
+\end{proof}

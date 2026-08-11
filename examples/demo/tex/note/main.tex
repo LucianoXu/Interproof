@@ -1,0 +1,128 @@
+% ===========================================================================
+%  The companion note: one file, no sections/ directory.
+%
+%  Two things are being demonstrated here.
+%
+%  1. `\input{../common/preamble}` is a plain relative path.  It works because
+%     latexmk runs with this directory as its working directory, so no TEXINPUTS
+%     is needed.  The paper next door does the same thing the other way, through
+%     `env = { TEXINPUTS = "../common:" }`; the demo carries one of each.
+%
+%  2. `\label{def:state}` below is *also* used by the paper.  A Lean comment
+%     citing `def:state` therefore has to say which document it means, and that
+%     is what the `markers` in interproof.toml are for.
+% ===========================================================================
+\documentclass[11pt,a4paper]{article}
+\input{../common/preamble}
+
+\title{Notes on Stores, Updates and Procedure Declarations}
+\author{The Interproof demo}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent
+Working notes for the companion paper. They fix the notation for stores and
+their updates, and sketch the frame discipline that a procedure call would
+need. Nothing here is new; the point is to have the definitions in one place so
+that the paper can use them without restating them.
+
+\section{Stores and updates}
+\label{sec:note-stores}
+
+\begin{definition}[states]
+\label{def:state}
+A \emph{state} is a total map $\sigma : \Var \to \Nat$; we write $\Stores$ for
+the set of them and reserve $\sigma, \tau, \upsilon$ for its elements. This is
+the same object the paper calls a store, restated here so that these notes can
+be read on their own.
+\end{definition}
+
+\begin{definition}[state update]
+\label{def:update}
+For $\sigma \in \Stores$, $x \in \Var$ and $n \in \Nat$, the state
+$\upd{\sigma}{x}{n}$ is
+\[
+  \upd{\sigma}{x}{n}(y) \;=\;
+  \begin{cases}
+    n & \text{if } y = x, \\
+    \sigma(y) & \text{otherwise.}
+  \end{cases}
+\]
+Every state-changing construct in the language of the paper is built from this
+one operation.
+\end{definition}
+
+\begin{lemma}[shadowing]
+\label{lem:update-shadow}
+$\upd{(\upd{\sigma}{x}{m})}{x}{n} = \upd{\sigma}{x}{n}$.
+\end{lemma}
+
+\begin{proof}
+Extensionality in $y$, then a case split on $y = x$; both branches of
+\Cref{def:update} agree.
+\end{proof}
+
+\begin{lemma}[commuting updates]
+\label{lem:update-comm}
+If $x \ne y$ then
+$\upd{(\upd{\sigma}{x}{m})}{y}{n} = \upd{(\upd{\sigma}{y}{n})}{x}{m}$.
+\end{lemma}
+
+\begin{proof}
+Extensionality in $z$, then a case split on $z = x$ and on $z = y$. The
+hypothesis $x \ne y$ is what rules out the branch in which the two updates
+disagree.
+\end{proof}
+
+\section{Frames and procedures}
+\label{sec:note-frames}
+
+\begin{definition}[frame lifting]
+\label{def:frame}
+Let $W \subseteq \Var$ be finite --- a \emph{frame}. Two states \emph{agree on
+$W$}, written $\agree{W}{\sigma}{\tau}$, when $\sigma(y) = \tau(y)$ for every
+$y \in W$. A statement about states \emph{lifts to the frame $W$} when it is
+invariant under agreement on $W$.
+\end{definition}
+
+\begin{lemma}[framing an update]
+\label{lem:frame-update}
+If $x \notin W$ then $\agree{W}{\sigma}{\upd{\sigma}{x}{n}}$.
+\end{lemma}
+
+\begin{proof}
+Let $y \in W$. Then $y \ne x$, since $x \notin W$, so the second branch of
+\Cref{def:update} applies and $\upd{\sigma}{x}{n}(y) = \sigma(y)$.
+\end{proof}
+
+\begin{proposition}[expression framing]
+\label{prop:agree-eval}
+If $\agree{\fv(a)}{\sigma}{\tau}$ then $\sem{a}\sigma = \sem{a}\tau$, where
+$\fv(a)$ is the free-variable set of the paper's arithmetic expressions.
+\end{proposition}
+
+\begin{proof}
+Induction on $a$. The variable case is the hypothesis at that variable; the
+addition case splits the frame along \Cref{def:frame} and uses both induction
+hypotheses.
+\end{proof}
+
+\begin{definition}[procedure declaration]
+\label{def:proc}
+A \emph{procedure declaration} is a pair
+$\prock\ p(\vec{x}) = c$ of a list $\vec{x}$ of formal parameters and a body
+$c$. The declaration carries no frame of its own: the frame of a call is the
+frame of $c$, which is why \Cref{lem:frame-update} and \Cref{prop:agree-eval}
+come first.
+\end{definition}
+
+\begin{remark}
+\label{rem:no-calls}
+The paper's core language has no call construct, so nothing in it is affected
+by this section. It is here because the frame discipline is the part of these
+notes that the formalization actually uses.
+\end{remark}
+
+\end{document}

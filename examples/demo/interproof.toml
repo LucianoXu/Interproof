@@ -1,0 +1,183 @@
+# ===========================================================================
+#  interproof.toml — the demo project
+#
+#  This file is the only thing that ties Interproof to a particular pair of
+#  documents.  Retargeting the tool is writing one of these; it is never an
+#  edit to the code.
+#
+#  Its directory is the project root, and EVERY path below is read relative to
+#  that directory — never to your shell's working directory — so the whole
+#  project stays portable between checkouts.  `interproof` walks up from
+#  wherever you run it until it finds this file, the way `git` and `make` do.
+#
+#  It is also over-commented on purpose: this is the file people copy.
+# ===========================================================================
+
+[project]
+# Shown in the browser tab and the page header.  Defaults to the directory
+# name, which is almost never what you want.
+title = "Toy IMP — a paper, a note, and their Lean formalization"
+
+# Where the compiled PDFs and their .synctex.gz live.  Intermediate, not the
+# deliverable; it is in .gitignore.  Default: ".interproof/build".
+build_dir = ".interproof/build"
+
+# Where `interproof build` writes the artifact folder.  Default: "site".
+out = "site"
+
+
+# ---------------------------------------------------------------------------
+#  The documents
+#
+#  One [[document]] per informal text.  There is no "the other document"
+#  anywhere in the tool: a third one is a third table here and nothing else.
+# ---------------------------------------------------------------------------
+
+[[document]]
+# `id` is the key prefix for every item of this document (`paper::def:cmd`)
+# and, by default, the word a Lean comment uses to name it.  Keep it short:
+# it is typed in every citation.
+id = "paper"
+
+title = "A Toy Imperative Language and Its Hoare Logic"   # full title, in the header
+short = "paper"                                            # a one-word caption
+
+# The document's source directory.  latexmk runs with this as its working
+# directory, and SyncTeX resolves every source path against it.  A source file
+# outside this directory still compiles — ../common/preamble.tex does — it
+# simply gets no page geometry of its own, which is right: it holds no labels.
+root = "tex/paper"
+
+# What latexmk compiles, relative to `root`.  Default: "main.tex".
+main = "main.tex"
+
+# The sources to READ, as globs relative to `root`, IN READING ORDER.  This is
+# the order the viewer's index inherits, so it is the configuration's decision
+# and not the file system's — which is why the section files are numbered.
+#
+# Note that `main.tex` is deliberately absent: it holds the preamble and the
+# \input list and not a single \label, so parsing it would add nothing.  A
+# single-file document just says `files = ["main.tex"]`, as the note does
+# below; omitting `files` entirely means exactly that.
+files = ["sections/*.tex"]
+
+# How a Lean comment names this document.  These are REGULAR EXPRESSIONS, and
+# the last one matching within ~90 characters before a citation decides which
+# document that citation meant.  They only matter for labels that exist in
+# more than one document — `def:state` is in both of ours — but they cost
+# nothing and they make a citation readable on its own.
+#
+# Default, if omitted: the id as a word, i.e. `\bpaper\b`.  Be careful with an
+# id that is also an ordinary English word: "as the paper shows, def:state"
+# would then be a marker match, which here is what we want and elsewhere may
+# not be.  An id like `P3` avoids the question entirely.
+markers = ['\bpaper\b', '\bIMP\b']
+
+# Extra environment for this document's latexmk run.
+#
+# This one is load-bearing: main.tex says `\input{preamble}` with no path, and
+# the file is at ../common/preamble.tex.  Without this line the paper does not
+# compile.  The companion note spells the relative path out instead and needs
+# no `env` at all; the demo carries one of each so that both are known to work.
+#
+# The trailing colon matters — it means "and then the usual places".
+env = { TEXINPUTS = "../common:" }
+
+# The compiler command, if latexmk is not what you want.  `-outdir=` and the
+# main file are appended by the tool.
+# latexmk = ["latexmk", "-pdf", "-synctex=1", "-interaction=nonstopmode"]
+
+
+[[document]]
+id = "note"
+title = "Notes on Stores, Updates and Procedure Declarations"
+short = "note"
+root = "tex/note"
+main = "main.tex"
+files = ["main.tex"]                  # one file; no reading order to decide
+
+# `\bnotes?\b` so that both "note, def:update" and "the notes say def:update"
+# name this document.  Case matters: a sentence starting "Note that ..." does
+# NOT match, which is the whole reason the pattern is lower-case.
+markers = ['\bnotes?\b']
+
+
+# ---------------------------------------------------------------------------
+#  The formalization
+# ---------------------------------------------------------------------------
+
+[formal]
+kind = "lean"          # the only value this version accepts
+
+# The directory holding the .lean sources.  Read recursively: a module is
+# keyed by its PATH under this root (`Demo/Logic/Rules`), not by its file
+# name, so two subdirectories may hold the same name without colliding, and
+# the file index shows the tree instead of flattening it.
+#
+# No Lean toolchain is needed — the sources are parsed as text.
+root = "lean"
+
+# Globs, matched against the path under `root`, for modules to skip.  Useful
+# for scratch files and generated modules.  Nothing in this demo matches.
+exclude = ["**/Scratch.lean"]
+
+
+# ---------------------------------------------------------------------------
+#  The label and citation conventions
+#
+#  Every key here has a default that covers the usual LaTeX habits, so a real
+#  project can leave the whole section out.  It is written out in full here
+#  because the demo is also the documentation: these are the knobs, and this
+#  is what happens when you turn them.
+# ---------------------------------------------------------------------------
+
+[grammar]
+# The theorem-like environments that produce an ITEM.  A `\begin{observation}`
+# is invisible to Interproof until it is named here — and it must also be
+# \newtheorem'd in tex/common/preamble.tex, which is the copy of this list
+# that LaTeX reads.  The two lists drifting apart is the most common way a
+# statement goes missing from the index.
+environments = [
+  "definition", "lemma", "theorem", "proposition", "corollary",
+  "remark", "example",
+]
+
+# The prefixes that make a string a label.  `def:cmd` is a citation; `foo:cmd`
+# is prose.  A project writing `t:foo` for theorems says so here instead of
+# renaming a thousand labels.
+#
+# `sec` and `sub` are included so that a citation may name a whole section.
+# The viewer names such a reference but does not offer it, since only labelled
+# statements get a rectangle in the PDF.
+label_prefixes = [
+  "thm", "lem", "def", "prop", "cor", "rem",
+  "sec", "sub", "app", "fig", "tab", "eq",
+]
+
+# The environment whose text is treated as the ITEM'S PROOF: located in the
+# PDF as a second rectangle, and read for the citations a proof makes, since a
+# proof citing a lemma is what a dependency is.  Only a proof STARTING
+# IMMEDIATELY after \end{theorem} counts as that theorem's.
+proof_environment = "proof"
+
+# How a citation that names an item by its TITLE spells the item's kind, and
+# which environment each spelling means.
+#
+#     /-- ... note, Def. procedure declaration ... -/
+#     /-- ... Definition (frame lifting) ... -/
+#
+# both resolve, because "Def." and "Definition" are listed under `definition`
+# and the note has \begin{definition}[procedure declaration] and
+# \begin{definition}[frame lifting].
+#
+# The kind has to AGREE: `Lemma (frame lifting)` resolves to nothing, on
+# purpose.  Without that check every title citation would be a guess, and the
+# disagreement it catches is a real one — it is usually a definition that has
+# since become a lemma.
+[grammar.kind_words]
+definition  = ["Definition", "Def."]
+lemma       = ["Lemma", "Lem."]
+theorem     = ["Theorem", "Thm."]
+proposition = ["Proposition", "Prop."]
+corollary   = ["Corollary", "Cor."]
+remark      = ["Remark", "Rem."]

@@ -1,0 +1,23 @@
+# Everything in this directory is source.  These are what a build leaves behind.
+
+# `build_dir` from interproof.toml: the compiled PDFs and their .synctex.gz.
+/.interproof/
+
+# `out` from interproof.toml: the artifact folder.
+/site/
+
+# LaTeX droppings, should latexmk ever run in place rather than with -outdir.
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.synctex
+*.bbl
+*.blg
+
+# Lean, if anyone ever points a toolchain at lean/.
+/lean/.lake/
+/lean/build/

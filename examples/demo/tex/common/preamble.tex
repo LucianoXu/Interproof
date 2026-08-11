@@ -1,0 +1,70 @@
+% ===========================================================================
+%  Shared preamble for the Interproof demo.
+%
+%  It sits OUTSIDE either document's root, which is the point: a real project
+%  keeps one notation file and both the paper and the notes read it, so the
+%  build has to cope with a source file that is not under `[[document]].root`.
+%  SyncTeX records it as an input, Interproof drops it (it holds no labels and
+%  no page of its own), and everything keeps working.
+%
+%  The two documents reach it two different ways, on purpose:
+%    tex/paper/main.tex  \input{preamble}              + TEXINPUTS=../common:
+%    tex/note/main.tex   \input{../common/preamble}    plain relative path
+%  See the comments in ../../interproof.toml.
+% ===========================================================================
+
+\usepackage[T1]{fontenc}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{hyperref}
+\usepackage{cleveref}          % MUST be loaded after hyperref
+
+\hypersetup{colorlinks=true, linkcolor=[rgb]{0.10,0.25,0.55},
+            citecolor=[rgb]{0.10,0.25,0.55}}
+
+% ---- theorem environments -------------------------------------------------
+% One shared counter, so `Definition 2.1` and `Lemma 2.2` interleave the way a
+% reader expects.  The environment names here are exactly the ones listed in
+% `[grammar].environments`; adding one means adding it in both places.
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{example}[definition]{Example}
+\theoremstyle{plain}
+\newtheorem{theorem}[definition]{Theorem}
+\newtheorem{lemma}[definition]{Lemma}
+\newtheorem{proposition}[definition]{Proposition}
+\newtheorem{corollary}[definition]{Corollary}
+\theoremstyle{remark}
+\newtheorem{remark}[definition]{Remark}
+
+\crefname{definition}{Definition}{Definitions}
+\Crefname{definition}{Definition}{Definitions}
+\crefname{lemma}{Lemma}{Lemmas}
+\Crefname{lemma}{Lemma}{Lemmas}
+\crefname{proposition}{Proposition}{Propositions}
+\Crefname{proposition}{Proposition}{Propositions}
+\crefname{corollary}{Corollary}{Corollaries}
+\Crefname{corollary}{Corollary}{Corollaries}
+\crefname{remark}{Remark}{Remarks}
+\Crefname{remark}{Remark}{Remarks}
+
+% ---- notation -------------------------------------------------------------
+\newcommand{\Var}{\mathsf{Var}}
+\newcommand{\Nat}{\mathbb{N}}
+\newcommand{\Stores}{\Sigma}
+\newcommand{\Assn}{\mathcal{A}}
+\newcommand{\kw}[1]{\mathsf{#1}}
+\newcommand{\skipk}{\kw{skip}}
+\newcommand{\ifk}{\kw{if}}
+\newcommand{\thenk}{\kw{then}}
+\newcommand{\elsek}{\kw{else}}
+\newcommand{\whilek}{\kw{while}}
+\newcommand{\dok}{\kw{do}}
+\newcommand{\prock}{\kw{proc}}
+\newcommand{\sem}[1]{[\![#1]\!]}
+\newcommand{\upd}[3]{#1[#2 \mapsto #3]}          % sigma[x -> n]
+\newcommand{\bigstep}[3]{\langle #1, #2\rangle \Downarrow #3}
+\newcommand{\triple}[3]{\{#1\}\, #2 \,\{#3\}}
+\newcommand{\vdashH}{\vdash_{\mathrm{H}}}        % derivable in the proof system
+\newcommand{\agree}[3]{#2 \sim_{#1} #3}          % agreement on a frame
+\newcommand{\fv}{\operatorname{fv}}

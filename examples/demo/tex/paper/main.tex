@@ -1,0 +1,37 @@
+% ===========================================================================
+%  The paper's root file.
+%
+%  It holds no `\label` of its own on purpose: `[[document]].files` for this
+%  document is `["sections/*.tex"]`, which is the "a document is several source
+%  files in a reading order" path.  Everything labelled lives in sections/.
+%
+%  `\input{preamble}` has no path.  The file is at ../common/preamble.tex, and
+%  it is found because interproof.toml gives this document
+%  `env = { TEXINPUTS = "../common:" }`.  The companion note spells the same
+%  path out instead; both work, and the demo carries one of each.
+% ===========================================================================
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+
+\title{A Toy Imperative Language and Its Hoare Logic}
+\author{The Interproof demo}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We fix a small imperative language with assignment, sequencing, a conditional
+and a loop; give it a big-step operational semantics; state a Hoare logic of
+partial correctness over that semantics; and prove the proof system sound.
+Everything here is standard and deliberately tiny: the point of the document
+is to be read beside the Lean development that formalizes it. The companion
+note fixes the notation for stores and frames.
+\end{abstract}
+
+\input{sections/10-syntax}
+\input{sections/20-semantics}
+\input{sections/30-hoare}
+\input{sections/40-soundness}
+
+\end{document}
