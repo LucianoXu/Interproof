@@ -306,7 +306,14 @@ def _documents(raw: dict, root: Path, build_dir: Path, path: Path) -> list[Docum
         # A document with no marker can still be cited — by a canonical label
         # that only it holds.  Only ambiguity needs a marker, so the default is
         # the id itself, which is what people write anyway.
-        markers = list(e.get("markers", [r"\b%s\b" % re.escape(doc_id)]))
+        #
+        # Case-insensitively, though.  An id comes from a directory name and is
+        # usually capitalised (`Paper`); prose writes it as it falls in the
+        # sentence (`see paper, def:state`).  A default that missed on that
+        # difference would silently attribute the one kind of citation markers
+        # exist for — an ambiguous label — to the wrong document.  A marker
+        # written by hand is left exactly as written.
+        markers = list(e.get("markers", [r"(?i:\b%s\b)" % re.escape(doc_id)]))
         for m in markers:
             try:
                 re.compile(m)

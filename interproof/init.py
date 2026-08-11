@@ -15,6 +15,7 @@ interface of this tool, and it is addressed to whoever writes the Lean.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -127,8 +128,40 @@ def find_documents(root: Path) -> list[dict]:
             "root": rel(droot, root),
             "main": f.name,
             "files": files,
+            "texinputs": texinputs(f, head, droot, root),
         })
     return docs
+
+
+def texinputs(main: Path, head: str, droot: Path, root: Path) -> str:
+    """Where LaTeX has to look for a file this document reads but does not hold.
+
+    A shared preamble in a sibling directory, reached as `\\input{preamble}`,
+    is the commonest layout in a project with two papers — and the one thing
+    that makes a generated configuration fail on its first build, with an error
+    about a file the reader can see perfectly well sitting on disk.  Guessing
+    the search path is worth it: the alternative is that `interproof init`
+    produces something that does not compile, which is worse than producing
+    nothing.
+    """
+    want = []
+    for i in re.findall(r"\\(?:input|include)\{([^}]+)\}", head):
+        if "/" in i or i.startswith(".."):
+            continue                                   # a path resolves itself
+        name = i if i.endswith(".tex") else i + ".tex"
+        if (droot / name).is_file():
+            continue                                   # found where it is read
+        hits = [p for p in walk(root, ".tex") if p.name == name]
+        if len(hits) == 1:                             # a genuine ambiguity is
+            want.append(hits[0].parent)                # not worth a wrong guess
+    dirs = []
+    for d in want:
+        r = os.path.relpath(d, droot)
+        if r not in dirs:
+            dirs.append(r)
+    # the trailing empty entry is what keeps the TeX distribution on the path;
+    # dropping it replaces the search path rather than extending it
+    return ":".join(dirs) + ":" if dirs else ""
 
 
 def doc_id(f: Path) -> str:
@@ -244,6 +277,12 @@ def render(root: Path, docs: list[dict], lean_root: str) -> str:
             "files   = [" + ", ".join(q(f) for f in d["files"]) + "]"
             + "   # in reading order; the index inherits it",
         ]
+        if d.get("texinputs"):
+            out += [
+                "# This document reads a file it does not hold — a shared",
+                "# preamble — so LaTeX is told where to look for it.",
+                "env     = { TEXINPUTS = " + q(d["texinputs"]) + " }",
+            ]
         if i == 0:
             out += [
                 "# How a comment in the formal sources names this document.  The",
