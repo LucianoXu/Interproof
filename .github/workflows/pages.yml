@@ -1,0 +1,72 @@
+# The example, published as a reader anybody can open.
+#
+# Interproof is hard to describe and immediate to look at, so the repository
+# publishes its own example: two short papers, a small Lean formalization, and
+# the correspondence between them, live at the Pages URL.  A visitor decides
+# whether this tool is for them in about ten seconds, without installing
+# anything — which is more than any README paragraph can do.
+#
+# Requires Pages to be enabled once, with Settings -> Pages -> Source set to
+# "GitHub Actions".
+
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a queued run is superseded rather than cancelled,
+# so the site always ends up matching the newest commit that finished.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install TeX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            latexmk texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended
+
+      - name: install
+        run: pip install -e .
+
+      # A dangling citation must not reach the published page: the one claim
+      # this reader makes about itself is that the two sides agree.
+      - name: check
+        working-directory: examples/demo
+        run: interproof check
+
+      - name: build
+        working-directory: examples/demo
+        run: interproof build -o ../../_site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

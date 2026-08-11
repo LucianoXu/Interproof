@@ -1,0 +1,62 @@
+# The tool checked against its own example, on every push.
+#
+# `interproof check` is the part of this project that belongs in *your* CI too:
+# it fails when a citation stops resolving, which is the moment a `\label` was
+# renamed on one side and not the other.  This workflow is that recipe, running
+# against `examples/demo` — so the instructions in the README are executable
+# rather than aspirational.
+
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The paper side *is* the compiled PDF, so the tests that matter — that
+      # every statement can be located on a page — need a real TeX.  Without
+      # it the suite still runs and those tests skip themselves, which would
+      # quietly drop the half of the pipeline most likely to break.
+      - name: install TeX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            latexmk texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended
+
+      - name: install
+        run: pip install -e .
+
+      - name: unit tests
+        run: python -m unittest discover -s tests -v
+
+      # The example must stay honest: no dangling citation, ever.  This is the
+      # same command a user runs, with the same exit code.
+      - name: check the example
+        working-directory: examples/demo
+        run: interproof check
+
+      - name: build the example
+        working-directory: examples/demo
+        run: interproof build -o _site
+
+      # A reader that does not open is not a reader.  These are the two ways
+      # the artifact has actually failed in development: a placeholder that was
+      # never filled in, and a source folder that came out empty.
+      - name: the artifact is whole
+        working-directory: examples/demo
+        run: |
+          test -f _site/index.html
+          test -f _site/manifest.json
+          test -n "$(ls _site/pdf/*.pdf)"
+          test -n "$(find _site/sources -name '*.tex')"
+          test -n "$(find _site/sources -name '*.lean')"
+          ! grep -q '/\*BOOT\*/\|/\*APPJS\*/\|<!--TITLE-->' _site/index.html
