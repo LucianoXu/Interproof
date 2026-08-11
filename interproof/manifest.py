@@ -316,7 +316,20 @@ def attach_pdf_rects(cfg: Config, items: dict[str, TexItem], *,
     Only the rectangles are recorded.  Page count and page size come from
     pdf.js at read time, which is the authority on what it is drawing.
     """
-    from .synctex import SyncTeX
+    from .synctex import SyncTeX, have_text_layout
+
+    # SyncTeX brackets a block rather than measuring it: its bottom is wherever
+    # the *next* paragraph starts.  Reading the typeset page pulls that back to
+    # the block's own last line, and without it every band on every item runs
+    # one line long -- and a block that ends near the foot of a page runs onto
+    # the next one.  It is a declared dependency for exactly that reason, so
+    # this should be unreachable; when it is not, it has to be said, because
+    # the manifest that comes out looks entirely healthy.
+    if not have_text_layout():
+        print("!! PyMuPDF is not installed, so the page geometry is the raw "
+              "SyncTeX bracket:\n"
+              "   every highlight will end roughly one line below its "
+              "statement.  `pip install pymupdf`.", file=sys.stderr)
 
     found = 0
     for d in cfg.documents:

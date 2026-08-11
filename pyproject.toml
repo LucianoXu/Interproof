@@ -17,11 +17,15 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Mathematics",
   "Topic :: Text Processing :: Markup :: LaTeX",
 ]
-# No runtime dependencies.  The viewer is local code over a vendored pdf.js,
-# the parsers are source text, and the server is http.server: what this needs
-# that a Python install does not already have is a LaTeX toolchain, and no
-# package manager can supply that.
-dependencies = []
+# One, and it earns its place.  The viewer is local code over a vendored
+# pdf.js, both parsers read source text, and the server is http.server -- but
+# where a statement *ends* on a typeset page is a question only the page can
+# answer.  SyncTeX brackets a block; PyMuPDF measures it.  Without it every
+# highlight in the reader runs a line long, which is not a degraded mode worth
+# offering by default.
+#
+# The dependency this needs and cannot declare is a LaTeX toolchain.
+dependencies = ["pymupdf>=1.23"]
 
 [project.scripts]
 interproof = "interproof.cli:main"

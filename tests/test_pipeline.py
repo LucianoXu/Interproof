@@ -1,7 +1,7 @@
 """The pipeline, checked against the tracked example.
 
-Plain `unittest`, so `python3 -m unittest discover tests` is the whole of it and
-the package keeps its promise of no dependencies.
+Plain `unittest`, so `python3 -m unittest discover tests` is the whole of it --
+no test runner to install beyond what the package already needs.
 
 What is asserted here is mostly *structure*, not counts: a test that pins
 "exactly 27 declarations" fails every time somebody improves the example, which
@@ -25,9 +25,11 @@ from interproof import config as C
 from interproof import manifest as M
 from interproof.check import check
 from interproof.pdf import compile_docs
+from interproof.synctex import have_text_layout
 
 DEMO = Path(__file__).resolve().parent.parent / "examples" / "demo"
 HAVE_LATEX = shutil.which("latexmk") is not None
+HAVE_TEXT = have_text_layout()
 
 
 class ConfigTests(unittest.TestCase):
@@ -152,6 +154,46 @@ class ManifestTests(unittest.TestCase):
     @unittest.skipUnless(HAVE_LATEX, "needs latexmk")
     def test_check_passes(self):
         self.assertEqual(check(self.cfg, self.man), 0)
+
+    def test_the_page_geometry_is_measured_and_not_only_bracketed(self):
+        """PyMuPDF is a dependency, and this is what it is for.
+
+        Without it `tighten` cannot run and every band falls back to the raw
+        SyncTeX bracket, which sits a line low.  That degradation is invisible
+        in the manifest -- the rectangles look entirely reasonable -- so it is
+        asserted here rather than trusted.
+        """
+        self.assertTrue(HAVE_TEXT,
+                        "install pymupdf: without it every highlight in the "
+                        "reader ends one line below its statement")
+
+    @unittest.skipUnless(HAVE_LATEX and HAVE_TEXT, "needs latexmk and pymupdf")
+    def test_every_band_ends_on_a_line_of_text(self):
+        """A band's bottom edge lands on the bottom of a real typeset line.
+
+        This is the claim the reader makes about itself, and the one way it has
+        actually been wrong: the SyncTeX bracket ends where the *next*
+        paragraph begins, so an untightened band ends in the whitespace between
+        two paragraphs -- one line too low, and visibly so.
+        """
+        import pymupdf
+
+        for d in self.cfg.documents:
+            doc = pymupdf.open(d.pdf)
+            for key, it in self.man["tex"].items():
+                if it["doc"] != d.id or not it["rect"]:
+                    continue
+                r = it["rect"]
+                page = doc[r["end_page"] - 1]
+                bottoms = [ln["bbox"][3]
+                           for blk in page.get_text("dict")["blocks"]
+                           for ln in blk.get("lines", [])]
+                near = min((abs(b - r["bottom"]) for b in bottoms), default=1e9)
+                self.assertLess(
+                    near, 1.5,
+                    f"{key}: band ends at y={r['bottom']:.1f} on page "
+                    f"{r['end_page']}, which is {near:.1f}pt from any line of "
+                    f"text -- it is ending in a paragraph gap")
 
 
 class EmptyCorrespondenceTests(unittest.TestCase):

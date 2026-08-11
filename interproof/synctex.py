@@ -28,6 +28,25 @@ _FIELD = re.compile(r"^([xyhvWH]):(-?[\d.]+)$", re.M)
 _FOLIO = re.compile(r"[ivxlcdm\d]+", re.I)      # a page number, arabic or roman
 
 
+def _text_module():
+    """PyMuPDF, under whichever name this version answers to.
+
+    `pymupdf` is the current import name and `fitz` the historical one; both
+    are in the field, so both are tried.
+    """
+    for name in ("pymupdf", "fitz"):
+        try:
+            return __import__(name)
+        except ImportError:
+            continue
+    return None
+
+
+def have_text_layout() -> bool:
+    """Whether bands can be measured rather than only bracketed."""
+    return _text_module() is not None
+
+
 @dataclass(frozen=True)
 class Box:
     page: int
@@ -147,13 +166,19 @@ class SyncTeX:
     # ---- tightening ------------------------------------------------------
 
     def _text(self):
-        """Lazily opened text layout of the PDF, if PyMuPDF is installed."""
+        """The typeset page's own text layout, which is what sets the band.
+
+        SyncTeX brackets a block; only the page knows where the block's last
+        line actually ends.  Without this the bracket is used raw and every
+        band runs one line long -- which is why the reader carries a hard
+        dependency on PyMuPDF rather than treating it as a nicety.  It stays a
+        soft import all the same, because a manifest with approximate geometry
+        is worth more than no manifest, and `have_text_layout` is what makes
+        the difference visible instead of silent.
+        """
         if not hasattr(self, "_doc"):
-            try:
-                import fitz
-                self._doc = fitz.open(self.pdf)
-            except Exception:
-                self._doc = None
+            mod = _text_module()
+            self._doc = mod.open(self.pdf) if mod else None
         return self._doc
 
     def _lines(self, page_no: int, x0: float, x1: float,

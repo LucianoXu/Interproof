@@ -39,8 +39,7 @@ pipx install git+https://github.com/LucianoXu/Interproof     # today
 pipx install interproof                                      # once published to PyPI
 ```
 
-`pip install` instead of `pipx` works equally well; there are no runtime
-dependencies to isolate.
+`pip install` instead of `pipx` works equally well.
 
 You also need a **LaTeX installation** (`latexmk` and SyncTeX, which every
 TeXLive has). That is the real dependency, and it is why this ships as a
