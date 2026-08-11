@@ -25,6 +25,7 @@ from functools import lru_cache
 from pathlib import Path
 
 _FIELD = re.compile(r"^([xyhvWH]):(-?[\d.]+)$", re.M)
+_FOLIO = re.compile(r"[ivxlcdm\d]+", re.I)      # a page number, arabic or roman
 
 
 @dataclass(frozen=True)
@@ -117,8 +118,12 @@ class SyncTeX:
         #
         # Whichever reaches lower is the one that saw the whole block.  Boxes
         # more than one page past the start are stray attributions, not content.
+        #
+        # The `\end{...}` line is not a body line: TeX credits it with whatever
+        # follows the environment as readily as with what precedes it, so
+        # counting it would drag the band over the next paragraph.
         limit = top.page + 1
-        body = [b for ln in range(begin, end + 1) for b in self._at(name, ln)
+        body = [b for ln in range(begin, end) for b in self._at(name, ln)
                 if not b.before(top) and b.page <= limit]
         floors = [Box(b.page, b.x, b.bottom, b.w, 0.0) for b in body]
 
@@ -151,6 +156,33 @@ class SyncTeX:
                 self._doc = None
         return self._doc
 
+    def _lines(self, page_no: int, x0: float, x1: float,
+               ceiling: float, floor: float) -> list[tuple]:
+        """Text lines of a page whose middle falls inside [ceiling, floor].
+
+        The midpoint is the test because SyncTeX reports a box without its
+        ascender, so the head line starts a hair above `ceiling`, while the
+        next paragraph's first line starts a hair above `floor`.  One is kept
+        and the other rejected, which testing an edge would not manage.
+        """
+        out = []
+        for blk in self._text()[page_no - 1].get_text("dict").get("blocks", []):
+            solo = len(blk.get("lines", [])) == 1
+            for ln in blk.get("lines", []):
+                b = ln["bbox"]
+                if b[2] < x0 - 24 or b[0] > x1 + 24:      # a different column
+                    continue
+                # the folio: a block of one line holding nothing but a number.
+                # It sits close enough under the last line of a block ending
+                # near the foot of the page to be mistaken for part of it.
+                if solo and _FOLIO.fullmatch(
+                        "".join(s["text"] for s in ln.get("spans", [])).strip()):
+                    continue
+                mid = (b[1] + b[3]) / 2
+                if ceiling <= mid <= floor:
+                    out.append(b)
+        return sorted(out, key=lambda b: b[1])
+
     def tighten(self, rect: dict) -> dict:
         """Pull the edges in to the text actually inside the band.
 
@@ -159,26 +191,38 @@ class SyncTeX:
         typeset page knows better, so the bracket is only used to decide which
         lines belong, and their own extent sets the edge.
         """
-        doc = self._text()
-        if doc is None:
+        if self._text() is None:
             return rect
-        page = doc[rect["end_page"] - 1]
-        ceiling = rect["top"] if rect["end_page"] == rect["page"] else 0.0
         x0, x1 = rect["x"], rect["x"] + rect["w"]
 
-        # A line counts as inside when its middle is: synctex reports a box
-        # without its ascender, so the head line starts a hair above `top`, and
-        # the next paragraph's first line starts a hair above the bracket.
-        # Testing the midpoint keeps the first and rejects the second.
-        lines = []
-        for blk in page.get_text("dict").get("blocks", []):
-            for ln in blk.get("lines", []):
-                b = ln["bbox"]
-                if b[2] < x0 - 24 or b[0] > x1 + 24:      # a different column
-                    continue
-                mid = (b[1] + b[3]) / 2
-                if ceiling <= mid <= rect["bottom"]:
-                    lines.append(b)
-        if lines:   # only ever pull the edge in, never push it past the bracket
-            rect["bottom"] = round(min(rect["bottom"], max(b[3] for b in lines)), 2)
+        # A bottom taken from the next page does not prove the block reached it:
+        # a block ending near the foot of one page is bracketed by the first
+        # line of the following one.  If that page holds nothing of ours, the
+        # block ended earlier, and drawing it to the page edge would swallow the
+        # margin and the folio.
+        if rect["end_page"] != rect["page"]:
+            if not self._lines(rect["end_page"], x0, x1, 0.0, rect["bottom"]):
+                rect["end_page"] = rect["page"]
+                page = self._text()[rect["page"] - 1]
+                run = self._lines(rect["page"], x0, x1, rect["top"], page.rect.height)
+                # with no bracket below, follow the block only while the lines
+                # keep coming: the next gap of any size is the end of it
+                pitch = max((run[i][1] - run[i - 1][1] for i in range(1, len(run))),
+                            default=0)
+                pitch = min(pitch, 26.0) or 14.0
+                bottom = rect["top"]
+                for b in run:
+                    if b[1] > bottom + pitch * 1.9:
+                        break
+                    bottom = max(bottom, b[3])
+                rect["bottom"] = round(bottom, 2)
+                return rect
+
+        ceiling = rect["top"] if rect["end_page"] == rect["page"] else 0.0
+        lines = self._lines(rect["end_page"], x0, x1, ceiling, rect["bottom"])
+        if lines:
+            # The last member line sets the edge even when its box reaches past
+            # the bracket: a display sets a box taller than its neighbours, and
+            # a line whose middle is inside the block belongs to it whole.
+            rect["bottom"] = round(max(b[3] for b in lines), 2)
         return rect

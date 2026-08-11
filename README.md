@@ -83,12 +83,24 @@ make distclean  # also drop the compiled PDFs
   declaration belongs to that declaration, not to the module.
 
 `tools/synctex.py` then places each item in its PDF. SyncTeX brackets a block
-rather than measuring it — the `\begin` line is a reliable top, but `\end` is
-credited with boxes both inside the block and in the paragraph after it — so the
-bracket only decides which typeset lines belong, and those lines' own extent
-sets the band. A line counts when its midpoint is inside, which keeps the head
-line (whose ascender rises above the box) and rejects the next paragraph's
-first.
+rather than measuring it: the `\begin` line is a reliable top, but `\end` is
+credited with boxes inside the block as readily as with the paragraph after it,
+so it is not a body line and cannot be trusted as a bottom either. The bracket
+therefore only decides which typeset lines belong, and those lines' own extent
+sets the band. Three rules make that hold up on real pages:
+
+- a line counts when its **midpoint** is inside — which keeps the head line,
+  whose ascender rises above SyncTeX's box, and rejects the next paragraph's
+  first line, which starts above the bracket;
+- a bottom on the **next page does not prove the block reached it**: a block
+  ending near the foot of a page is bracketed by the first line of the
+  following one. If that page holds none of the block's lines, the span
+  collapses — otherwise the band would run to the page edge;
+- the **folio is not content**. A one-line block holding nothing but a number
+  sits close enough under a block ending low on the page to be mistaken for
+  part of it.
+
+All 46 items land within 1pt of the last line of their block.
 
 ## Retargeting
 
