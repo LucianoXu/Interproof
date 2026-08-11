@@ -37,13 +37,15 @@ def main(argv: list[str]) -> int:
         env = {**os.environ, **d.get("env", {})}
         cmd = LATEXMK + (["-g"] if force else []) + [
             "-outdir=" + os.path.relpath(out, d["root"]), d["main"]]
-        r = subprocess.run(cmd, cwd=d["root"], env=env,
-                           capture_output=True, text=True)
+        # bytes, not text: a first run echoes the .log, which carries whatever
+        # 8-bit bytes the fonts and packages put there and is not valid UTF-8
+        r = subprocess.run(cmd, cwd=d["root"], env=env, capture_output=True)
+        out = r.stdout.decode("utf-8", "replace")
         if r.returncode != 0 or not d["pdf"].exists():
-            sys.stderr.write(r.stdout[-3000:] + r.stderr[-2000:])
+            sys.stderr.write(out[-3000:] + r.stderr.decode("utf-8", "replace")[-2000:])
             print(f"!! {d['id']}: latexmk failed", file=sys.stderr)
             return 1
-        fresh = "Nothing to do for" not in r.stdout       # latexmk's own verdict
+        fresh = "Nothing to do for" not in out            # latexmk's own verdict
         print(f"{d['id']:8s} {d['pdf'].relative_to(ROOT)}"
               f"  {d['pdf'].stat().st_size / 1024:.0f} KB"
               f"  {'rebuilt' if fresh else 'up to date'}")
