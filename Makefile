@@ -1,22 +1,15 @@
 PQCPLUS := /data/vault/assets/1-projects/PQCPlus
 BUILD   := stignore-build
-LATEXMK := latexmk -pdf -synctex=1 -interaction=nonstopmode
 
 .PHONY: all pdf extract site sync serve clean distclean
 
 all: pdf extract site
 
-## compile both documents; -synctex=1 is what makes label -> page,rect possible
-pdf: $(BUILD)/note/main.pdf $(BUILD)/P3/main.pdf
-
-$(BUILD)/note/main.pdf: sandbox/tex/note/*.tex
-	@mkdir -p $(BUILD)/note
-	cd sandbox/tex/note && $(LATEXMK) -outdir=../../../$(BUILD)/note main.tex
-
-$(BUILD)/P3/main.pdf: sandbox/tex/P3-easypqc/main.tex sandbox/tex/P3-easypqc/sections/*.tex \
-                      sandbox/tex/common/preamble.tex sandbox/tex/common/refs.bib
-	@mkdir -p $(BUILD)/P3
-	cd sandbox/tex/P3-easypqc && BIBINPUTS=../common: $(LATEXMK) -outdir=../../../$(BUILD)/P3 main.tex
+## Compile every document in the DOCS table of tools/extract.py, which is the
+## one place this build knows which documents exist.  -synctex=1 is what makes
+## label -> page,rectangle possible; latexmk handles incrementality itself.
+pdf:
+	python3 tools/build_pdf.py
 
 extract: pdf
 	python3 tools/extract.py

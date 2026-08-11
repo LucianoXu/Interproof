@@ -8,6 +8,22 @@ var M = window.__MANIFEST__;
 var TEX = M.tex, BY = M.by_item, LEAN = M.lean, LINKS = M.links;
 var PDFS = window.__PDFS__;          // doc -> the compiled PDF, base64
 
+/* The document set comes from the manifest; this file names no document.
+   DOCS is in document order, which is also the order items sort in. */
+var DOCS = M.docs;
+var DOC = {}, DOCPOS = {};
+DOCS.forEach(function (d, i) { DOC[d.id] = d; DOCPOS[d.id] = i; });
+
+/* resolve a bare label against the documents, preferring one of them */
+function findLabel(label, prefer) {
+  if (prefer && HAS[prefer + "::" + label]) return prefer + "::" + label;
+  for (var i = 0; i < DOCS.length; i++) {
+    var k = DOCS[i].id + "::" + label;
+    if (HAS[k]) return k;
+  }
+  return null;
+}
+
 /* ---- lean index -------------------------------------------------------- */
 var DECL = {};                       // "File::name" -> decl
 var FILE = {};                       // "File" -> file record
@@ -54,7 +70,7 @@ function leanCite(text, escaped) {
     function (whole, kind, name) {
       var lbl = kind + ":" + name.replace(/\.$/, "");
       var cm = lbl.match(/^(.*)\.(\d+)$/); if (cm) lbl = cm[1];
-      var key = HAS["P3::" + lbl] ? "P3::" + lbl : (HAS["note::" + lbl] ? "note::" + lbl : null);
+      var key = findLabel(lbl);
       if (!key) return whole;
       return '<span class="' + (escaped ? "citec" : "cite") + '" data-go="' + key + '">' + whole + "</span>";
     });
@@ -133,7 +149,7 @@ function itemsOrdered() {
   return Object.keys(TEX).map(function (k) { return [k, TEX[k]]; })
     .filter(function (e) { return e[1].kind !== "section" && e[1].kind !== "subsection"; })
     .sort(function (a, b) {
-      if (a[1].doc !== b[1].doc) return a[1].doc === "P3" ? -1 : 1;
+      if (a[1].doc !== b[1].doc) return DOCPOS[a[1].doc] - DOCPOS[b[1].doc];
       return a[1].order - b[1].order;
     });
 }
@@ -155,7 +171,7 @@ function buildRail() {
       var hay = (it.label + " " + it.title + " " + it.section + " " + it.subsection).toLowerCase();
       var leanHay = (BY[key] || []).map(function (l) { return l.file + " " + (l.decl || ""); }).join(" ").toLowerCase();
       if (q && hay.indexOf(q) < 0 && leanHay.indexOf(q) < 0) return;
-      var grp = (it.doc === "P3" ? "P3 · " : "NOTE · ") + (it.section || "");
+      var grp = it.doc.toUpperCase() + " · " + (it.section || "");
       if (grp !== lastGrp) { html += '<div class="grp">' + esc(grp) + "</div>"; lastGrp = grp; }
       var ct = (BY[key] || []).length;
       html += '<div class="itm' + (ct ? " has" : "") + (state.sel === key ? " sel" : "") +
@@ -199,9 +215,6 @@ function buildRail() {
 
 /* ---- the paper page ---------------------------------------------------- */
 
-var DOCNAME = { P3: "P3 · EasyPQC on a Concrete Semantics",
-                note: "note · Quantum Procedure Call Semantics" };
-
 /* every placed item of a document, so a followed PDF link can be named */
 var LOCATED = {};
 function located(doc) {
@@ -217,7 +230,8 @@ function located(doc) {
 function paperHead(keys, focus) {
   var it = TEX[keys[focus]];
   if (!it) return "";
-  var h = '<div class="crumb"><span>' + DOCNAME[it.doc] + "</span>";
+  var h = '<div class="crumb"><span>' + esc(it.doc + " · " + DOC[it.doc].title) +
+          "</span>";
   if (it.section) h += "<i>/</i><span>" + esc(it.section) + "</span>";
   if (it.subsection) h += "<i>/</i><span>" + esc(it.subsection) + "</span>";
   h += '<span class="rtools">';
@@ -230,7 +244,8 @@ function paperHead(keys, focus) {
        '<button class="rbtn" data-zoom="fit">fit</button></span></div>';
 
   h += '<div class="rid"><span class="lbl">' + esc(it.kind) + " — " + esc(it.label) +
-       '</span><span class="src">' + esc(it.file) + ":" + it.line + "</span></div>";
+       '</span><span class="src">' + esc(it.doc + "/" + it.file) + ":" + it.line +
+       "</span></div>";
 
   /* items this one cross-references, and — when several are marked at once —
      the siblings, so the marks in the scroll are all reachable by name */
@@ -240,9 +255,7 @@ function paperHead(keys, focus) {
     chips += '<span class="chip on" data-go="' + k + '">' + esc(TEX[k].label) + "</span>";
   });
   (it.refs || []).forEach(function (l) {
-    var k = HAS[it.doc + "::" + l] ? it.doc + "::" + l
-          : (HAS[(it.doc === "P3" ? "note" : "P3") + "::" + l]
-             ? (it.doc === "P3" ? "note" : "P3") + "::" + l : null);
+    var k = findLabel(l, it.doc);
     if (k && keys.indexOf(k) < 0) chips += '<span class="chip" data-go="' + k + '">' + esc(l) + "</span>";
   });
   if (chips) h += '<div class="chips"><i>cites</i>' + chips + "</div>";
@@ -416,7 +429,7 @@ function buildCoverage() {
     if (it.doc !== curDoc) {
       curDoc = it.doc;
       h += '<div class="rl" style="color:var(--amber);font-size:10px;letter-spacing:.12em;text-transform:uppercase">' +
-           (curDoc === "P3" ? "P3 — easypqc" : "note — semantics") + "</div><div></div>";
+           esc(curDoc + " — " + DOC[curDoc].short) + "</div><div></div>";
     }
     var links = BY[key] || [];
     var per = {}; links.forEach(function (l) { per[l.file] = (per[l.file] || 0) + 1; });
@@ -529,7 +542,6 @@ function boot() {
   syncModes();
   buildRail();
   var start = decodeURIComponent((location.hash || "").slice(1));
-  if (!TEX[start]) start = "P3::thm:interaction";
   if (!TEX[start]) start = itemsOrdered()[0][0];
   select(start);
 }

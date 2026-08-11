@@ -359,10 +359,9 @@ def parse_lean_file(
     def mkref(start: int, stop: int, label: str, via: str) -> dict:
         lno = line_of(start)
         # which document? nearest marker before the citation
-        window = text[max(0, start - 90):start]
         doc_hint = ""
-        for mm in re.finditer(r"\bP3\b|\bnote\b|\bnotes\b|EasyPQC", window):
-            doc_hint = "note" if mm.group(0).startswith("note") else "P3"
+        for mm in MARKER_RE.finditer(text[max(0, start - 90):start]):
+            doc_hint = MARKER_OF[mm.lastgroup]
         # A citation almost always sits in the `/-- ... -/` docstring *above* the
         # declaration it is about, so the docstring counts as part of it.  Only
         # `/-! ... -/` module prose, which no declaration owns, stays at module
@@ -410,14 +409,55 @@ def parse_lean_file(
 
 
 # --------------------------------------------------------------------------
-# PDF geometry
+# The document set
+#
+# Everything that ties this build to *these* papers lives here.  Pointing the
+# reader at a different pair is an edit to this table: nothing downstream —
+# not the Lean parser, not the geometry, not the viewer — names a document.
 # --------------------------------------------------------------------------
 
 BUILD = ROOT / "stignore-build"
-DOCS = {                                  # doc -> (compiled pdf, its source root)
-    "P3": (BUILD / "P3/main.pdf", SANDBOX / "tex/P3-easypqc"),
-    "note": (BUILD / "note/main.pdf", SANDBOX / "tex/note"),
-}
+
+DOCS: list[dict] = [
+    {
+        "id": "P3",                                   # key prefix and citation marker
+        "title": "EasyPQC on a Concrete Semantics",
+        "short": "easypqc",                           # coverage-table caption
+        "root": SANDBOX / "tex/P3-easypqc",           # what synctex resolves against
+        "files": ["sections/*.tex"],                  # globs, in document order
+        "main": "main.tex",                           # what latexmk compiles
+        "pdf": BUILD / "P3/main.pdf",
+        "env": {"BIBINPUTS": "../common:"},           # \bibliography{refs} lives there
+        # how a Lean comment names this document; first match before a citation wins
+        "markers": [r"\bP3\b", r"EasyPQC"],
+    },
+    {
+        "id": "note",
+        "title": "Quantum Procedure Call Semantics",
+        "short": "semantics",
+        "root": SANDBOX / "tex/note",
+        "files": ["main.tex", "appendix.tex"],
+        "main": "main.tex",
+        "pdf": BUILD / "note/main.pdf",
+        "markers": [r"\bnotes?\b"],
+    },
+]
+LEAN_DIR = SANDBOX / "lean"
+
+# one alternation over every document's markers, each in its own capture group,
+# so a match can be traced back to the document that claimed it
+MARKER_RE = re.compile("|".join(
+    "(?P<%s>%s)" % (d["id"].replace("-", "_"), "|".join(d["markers"])) for d in DOCS))
+MARKER_OF = {d["id"].replace("-", "_"): d["id"] for d in DOCS}
+
+
+def doc_files(d: dict) -> list[Path]:
+    """The document's sources, globs expanded, in the order given."""
+    out: list[Path] = []
+    for pat in d["files"]:
+        out.extend(sorted(d["root"].glob(pat)) if "*" in pat
+                   else ([d["root"] / pat] if (d["root"] / pat).exists() else []))
+    return out
 
 
 def attach_pdf_rects(tex_items: dict[str, TexItem]) -> int:
@@ -429,23 +469,23 @@ def attach_pdf_rects(tex_items: dict[str, TexItem]) -> int:
     from synctex import SyncTeX
 
     found = 0
-    for doc, (pdf, srcdir) in DOCS.items():
+    for d in DOCS:
+        pdf = d["pdf"]
         if not pdf.exists():
             print(f"!! {pdf.relative_to(ROOT)} missing — run `make pdf`", file=sys.stderr)
             continue
-        st = SyncTeX(pdf, srcdir)
+        st = SyncTeX(pdf, d["root"])
         if not st.ok:
             print(f"!! no .synctex.gz beside {pdf.name}", file=sys.stderr)
             continue
         for it in tex_items.values():
-            if it.doc != doc or it.kind not in ENV_KINDS:
+            if it.doc != d["id"] or it.kind not in ENV_KINDS:
                 continue
-            # manifest paths carry a document prefix; synctex wants them without
-            rel = it.file.split("/", 1)[1] if "/" in it.file else it.file
-            if not st.knows(rel):
+            if not st.knows(it.file):
                 continue
-            it.rect = st.rect(rel, it.line, it.end_line)
-            it.proof_rect = st.rect(rel, it.line, it.proof_end) if it.proof_end else None
+            it.rect = st.rect(it.file, it.line, it.end_line)
+            it.proof_rect = (st.rect(it.file, it.line, it.proof_end)
+                             if it.proof_end else None)
             found += bool(it.rect)
     return found
 
@@ -457,22 +497,16 @@ def attach_pdf_rects(tex_items: dict[str, TexItem]) -> int:
 def main() -> int:
     tex_items: dict[str, TexItem] = {}
     order = 0
-    p3_dir = SANDBOX / "tex/P3-easypqc"
-    for f in sorted(p3_dir.glob("sections/*.tex")):
-        got = parse_tex_file(f, "P3", f"P3-easypqc/sections/{f.name}", order)
-        order = got[-1].order if got else order
-        for it in got:
-            tex_items[f"P3::{it.label}"] = it
-    for f in [SANDBOX / "tex/note/main.tex", SANDBOX / "tex/note/appendix.tex"]:
-        if not f.exists():
-            continue
-        got = parse_tex_file(f, "note", f"note/{f.name}", order)
-        order = got[-1].order if got else order
-        for it in got:
-            tex_items[f"note::{it.label}"] = it
+    for d in DOCS:
+        for f in doc_files(d):
+            rel = str(f.relative_to(d["root"]))     # what synctex indexes it as
+            got = parse_tex_file(f, d["id"], rel, order)
+            order = got[-1].order if got else order
+            for it in got:
+                tex_items[f"{d['id']}::{it.label}"] = it
 
-    p3_labels = {it.label for it in tex_items.values() if it.doc == "P3"}
-    note_labels = {it.label for it in tex_items.values() if it.doc == "note"}
+    labels = {d["id"]: {it.label for it in tex_items.values() if it.doc == d["id"]}
+              for d in DOCS}
 
     located = attach_pdf_rects(tex_items)
 
@@ -483,7 +517,7 @@ def main() -> int:
             titles.setdefault(it.title, []).append((it.kind, it.doc, it.label))
 
     lean_files, all_refs = [], []
-    for f in sorted((SANDBOX / "lean").glob("*.lean")):
+    for f in sorted(LEAN_DIR.glob("*.lean")):
         if f.stem.startswith("_root_"):
             continue
         decls, mdoc, refs = parse_lean_file(f, titles)
@@ -495,26 +529,24 @@ def main() -> int:
         })
         all_refs.extend(refs)
 
+    known = lambda lbl: any(lbl in s for s in labels.values())
     links, unresolved = [], []
     for r in all_refs:
         # `def:wf.3` cites clause 3 of `def:wf`; a trailing `.` is sentence punctuation
         clause = ""
-        if r["label"] not in p3_labels and r["label"] not in note_labels:
+        if not known(r["label"]):
             base = r["label"].rstrip(".")
             cm = re.match(r"^(.*)\.(\d+)$", base)
-            if cm and (cm.group(1) in p3_labels or cm.group(1) in note_labels):
+            if cm and known(cm.group(1)):
                 clause, base = cm.group(2), cm.group(1)
             r = {**r, "label": base, "clause": clause}
-        in_p3, in_note = r["label"] in p3_labels, r["label"] in note_labels
-        if in_p3 and in_note:
-            doc = r["doc_hint"] or "P3"
-        elif in_p3:
-            doc = "P3"
-        elif in_note:
-            doc = "note"
-        else:
+        holders = [d["id"] for d in DOCS if r["label"] in labels[d["id"]]]
+        if not holders:
             unresolved.append(r)
             continue
+        # a label in more than one document is settled by the nearest marker,
+        # and failing that by document order
+        doc = (r["doc_hint"] if r["doc_hint"] in holders else holders[0])
         links.append({**r, "doc": doc, "key": f"{doc}::{r['label']}"})
 
     # per-item aggregation
@@ -524,6 +556,9 @@ def main() -> int:
 
     manifest = {
         "generated_from": "sandbox/ (source copies; no Lean build)",
+        # the viewer takes its document set from here rather than knowing one
+        "docs": [{"id": d["id"], "title": d["title"], "short": d["short"]}
+                 for d in DOCS],
         "tex": {k: asdict(v) for k, v in tex_items.items()},
         "lean": lean_files,
         "links": links,
@@ -531,8 +566,7 @@ def main() -> int:
         "unresolved": unresolved,
         "stats": {
             "tex_items": len(tex_items),
-            "p3_items": len(p3_labels),
-            "note_items": len(note_labels),
+            "doc_items": {k: len(v) for k, v in labels.items()},
             "lean_files": len(lean_files),
             "lean_decls": sum(len(f["decls"]) for f in lean_files),
             "lean_lines": sum(f["lines"] for f in lean_files),
@@ -547,7 +581,8 @@ def main() -> int:
     OUT.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
 
     s = manifest["stats"]
-    print(f"tex items      {s['tex_items']}  (P3 {s['p3_items']}, note {s['note_items']})")
+    per = ", ".join(f"{k} {v}" for k, v in s["doc_items"].items())
+    print(f"tex items      {s['tex_items']}  ({per})")
     print(f"lean           {s['lean_files']} files, {s['lean_decls']} decls, "
           f"{s['lean_lines']} lines")
     print(f"links          {s['links']} citations -> {s['linked_items']} distinct items"

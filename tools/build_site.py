@@ -33,14 +33,18 @@ def main() -> int:
     app_css = (SRC / "app.css").read_text(encoding="utf-8").replace(
         "--rail: 268px;", "--rail: 268px;\n  --grain: %s;" % grain)
 
-    # the compiled documents themselves; the viewer draws from these
+    # the compiled documents themselves; the viewer draws from these.  Which
+    # documents there are is the extractor's DOCS table, asked rather than repeated
+    sys.path.insert(0, str(ROOT / "tools"))
+    from extract import DOCS
+
     pdfs = {}
-    for doc, path in (("P3", "P3/main.pdf"), ("note", "note/main.pdf")):
-        f = ROOT / "stignore-build" / path
-        if not f.exists():
-            print(f"!! {path} missing — run `make pdf` first", file=sys.stderr)
+    for d in DOCS:
+        if not d["pdf"].exists():
+            print(f"!! {d['pdf'].relative_to(ROOT)} missing — run `make pdf` first",
+                  file=sys.stderr)
             return 1
-        pdfs[doc] = base64.b64encode(f.read_bytes()).decode()
+        pdfs[d["id"]] = base64.b64encode(d["pdf"].read_bytes()).decode()
 
     # `</script>` cannot occur in a base64 alphabet, so no escaping is needed
     pieces = {

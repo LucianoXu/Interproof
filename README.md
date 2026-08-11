@@ -90,6 +90,24 @@ sets the band. A line counts when its midpoint is inside, which keeps the head
 line (whose ascender rises above the box) and rejects the next paragraph's
 first.
 
+## Retargeting
+
+Nothing outside two places knows which documents exist. The viewer, the
+geometry, the Lean parser and the site build all ask rather than assume.
+
+- **`DOCS` in `tools/extract.py`** — the document set: id, title, source root,
+  files, what latexmk compiles, and the markers a Lean comment uses to name the
+  document (`P3`, `note`, `EasyPQC`). The `pdf` target, the extractor, the
+  manifest's `docs` section and the viewer's captions all derive from it.
+- **`make sync`** — where the raw material is fetched from, which is a fact
+  about the PQCPlus layout rather than about the documents.
+
+A third document is an entry in `DOCS`; there is no "the other document"
+anywhere. What the design cannot supply is the correspondence itself: point it
+at a Lean codebase whose docstrings never cite a paper and the manifest comes
+back empty. `span`'s data model is general; having something to populate it is
+the precondition.
+
 ## Reading the page
 
 - **Paper → Lean** (default): pick a statement; the right page shows every Lean
