@@ -1,0 +1,30 @@
+# This repository holds the framework only — the reader, the extractor, the
+# build. It never holds the material being read.
+#
+# `sandbox/` is read-only copies of the PQCPlus papers and Lean sources, and
+# `stignore-build/` is the PDFs compiled from them. Both are research content
+# belonging to assets/1-projects/PQCPlus. Populate them with `make sync`.
+
+/sandbox/
+/stignore-build/
+
+# Generated: `make` reproduces both in ~20 s. site/index.html is the
+# deliverable, but it is a 4 MB file rewritten wholesale on every build, so
+# history is better off without a copy per commit.
+
+/site/index.html
+/site/manifest.json
+
+# LaTeX droppings, should a build ever run in place rather than in -outdir
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.toc
+*.synctex.gz
+
+__pycache__/
+
+# browser-automation leftovers from interactive debugging
+/.playwright-mcp/

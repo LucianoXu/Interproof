@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interproof — PQCPlus</title>
+<style>/*FONTS*/</style>
+<style>/*APPCSS*/</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><b>Interproof</b><span>PQCPlus</span></div>
+    <div class="hbar">
+      <div id="stats" style="display:flex;gap:20px"></div>
+      <div class="hspacer"></div>
+      <span class="kbd">/</span><span style="color:var(--machine-rule)">search</span>
+      <span class="kbd">j k</span><span style="color:var(--machine-rule)">move</span>
+      <button class="hbtn" id="covbtn">Coverage &nbsp;g</button>
+    </div>
+  </header>
+
+  <nav class="rail">
+    <div class="modes">
+      <button data-mode="paper" class="on">Paper &rarr; Lean</button>
+      <button data-mode="lean">Lean &rarr; Paper</button>
+    </div>
+    <div class="searchwrap"><input id="search" placeholder="filter" spellcheck="false"></div>
+    <div class="railbody scroll" id="railbody"></div>
+  </nav>
+
+  <section class="recto">
+    <div class="rhead" id="rhead"></div>
+    <div class="scroll" id="pdfscroll"><div id="pdfpages"></div></div>
+  </section>
+
+  <section class="verso">
+    <div class="vhead" id="vhead"></div>
+    <div class="scroll"><div id="verso"></div></div>
+  </section>
+</div>
+
+<div class="cov scroll" id="cov"></div>
+
+<script type="text/plain" id="pdfjs-lib">/*PDFJS*/</script>
+<script type="text/plain" id="pdfjs-worker">/*PDFJSWORKER*/</script>
+<script>window.__MANIFEST__=/*MANIFEST*/;window.__PDFS__=/*PDFS*/;</script>
+<script>/*PDFVIEW*/</script>
+<script>/*APPJS*/</script>
+</body>
+</html>
