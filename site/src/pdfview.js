@@ -19,6 +19,7 @@ var scale = 1;                  // css px per pdf point
 var fit = true;                 // track the pane width until the reader zooms
 var host, scroller;             // .pdfpages, its scrolling ancestor
 var onPick = null;              // called with a label when a PDF link is followed
+var marksOf = null;             // doc -> the standing marks to lay over it
 var seq = 0;                    // load generation, so a stale load cannot paint
 
 /* ---- pdf.js boot ------------------------------------------------------- */
@@ -197,6 +198,7 @@ function load(name, url, items) {
     }).join("");
     layout();
     observe();
+    paintOverlay();                 // the page placeholders are enough to mark
   });
 }
 
@@ -216,7 +218,7 @@ function band(rect, cls) {
     var top = p === rect.page ? rect.top : 0;
     var bot = p === rect.end_page ? rect.bottom : vp.height;
     var el = document.createElement("div");
-    el.className = "mark " + cls;
+    el.className = cls;
     el.style.left = ((rect.x - 7) / vp.width * 100) + "%";
     el.style.width = ((rect.w + 14) / vp.width * 100) + "%";
     el.style.top = ((top - 4) / vp.height * 100) + "%";
@@ -227,12 +229,30 @@ function band(rect, cls) {
   return out;
 }
 
+/* ---- the standing overlay ---------------------------------------------- */
+
+/* Marks that are not a selection: every item of this document that has been
+   formalized, all at once.  They outlive the selection bands — `clear()` and
+   `show()` do not touch them — and they are the one mark the reader can click,
+   so the page itself becomes an index into the machine side. */
+function paintOverlay() {
+  host.querySelectorAll(".covmark").forEach(function (el) { el.remove(); });
+  if (!cur || !marksOf) return;
+  marksOf(cur).forEach(function (e) {
+    if (!e.rect) return;
+    band(e.rect, "covmark").forEach(function (el) {
+      el.title = e.title || "";
+      el.onclick = function () { if (onPick) onPick(e.key); };
+    });
+  });
+}
+
 function show(rects, focus) {
   if (!cur) return;
   clear();
   var first = null;
   rects.forEach(function (r, i) {
-    var els = band(r, i === focus ? "on" : "off");
+    var els = band(r, "mark " + (i === focus ? "on" : "off"));
     if (els[0] && (i === focus || !first)) first = els[0];
     // the page being jumped to is drawn outright; waiting for the observer to
     // notice it would show the reader a blank sheet at the moment of arrival
@@ -264,10 +284,13 @@ window.addEventListener("resize", function () {
 });
 
 window.PDFView = {
-  init: function (hostEl, scrollEl, pick) { host = hostEl; scroller = scrollEl; onPick = pick; },
+  init: function (hostEl, scrollEl, pick, marks) {
+    host = hostEl; scroller = scrollEl; onPick = pick; marksOf = marks;
+  },
   load: load,
   show: show,
   clear: clear,
+  repaintMarks: paintOverlay,
   zoom: function (mult) {
     if (!cur) return;
     fit = false;
@@ -275,6 +298,8 @@ window.PDFView = {
     layout();
   },
   refit: function () { fit = true; layout(); },
+  top: function () { scroller.scrollTo({ top: 0 }); },
+  pages: function () { return cur && docs[cur] ? docs[cur].viewports.length : 0; },
   resolve: resolve,
   scale: function () { return scale; },
   doc: function () { return cur; },

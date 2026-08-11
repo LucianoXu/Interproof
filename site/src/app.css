@@ -118,8 +118,8 @@ header {
 .modes { display: flex; border-bottom: 1px solid var(--rule); flex: none; }
 .modes button {
   flex: 1; background: none; border: 0; border-right: 1px solid var(--rule);
-  padding: 9px 0 8px;
-  font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  padding: 9px 2px 8px; white-space: nowrap;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase;
   color: var(--ink-faint); cursor: pointer; transition: .15s;
 }
 .modes button:last-child { border-right: 0; }
@@ -180,6 +180,13 @@ header {
 }
 .itm.has .ct { color: var(--rust-soft); }
 
+/* the file index: a row is a source file rather than an item, and two of them
+   are open at once — one per page.  Both are marked; the rule on the left
+   still says whether the file carries any correspondence at all. */
+.itm.file .nm { color: var(--ink-soft); }
+.itm.file.sel .nm { color: var(--ink); }
+.grp .dim { color: var(--rule); }
+
 /* ==========================================================================
    recto — the paper page
    ========================================================================== */
@@ -212,7 +219,7 @@ header {
 
 /* the synctex band: what the selected item occupies on the page */
 .mark {
-  position: absolute; pointer-events: none;
+  position: absolute; pointer-events: none; z-index: 2;
   border-radius: 2px; transition: opacity .25s ease;
 }
 .mark.on {
@@ -223,8 +230,19 @@ header {
 .mark.off { background: rgba(120,110,90,.1); box-shadow: inset 2px 0 0 var(--ink-faint); }
 @keyframes markin { from { opacity: 0; } to { opacity: 1; } }
 
+/* every formalized item, marked at once — a standing overlay under the
+   selection band, and the one mark that answers to a click */
+.covmark {
+  position: absolute; cursor: pointer; border-radius: 2px; z-index: 1;
+  background: rgba(77,107,58,.14);
+  box-shadow: inset 2px 0 0 var(--verd-dim);
+  transition: background .15s;
+  animation: markin .5s ease both;
+}
+.covmark:hover { background: rgba(77,107,58,.3); box-shadow: inset 2px 0 0 var(--verd); }
+
 /* \Cref links the document itself carries (hyperref documents only) */
-.plink { position: absolute; cursor: pointer; border-bottom: 1px solid transparent; }
+.plink { position: absolute; cursor: pointer; border-bottom: 1px solid transparent; z-index: 3; }
 .plink:hover { background: rgba(169,60,22,.14); border-bottom-color: var(--rust); }
 
 /* --- the bar above it -------------------------------------------------- */
@@ -233,6 +251,14 @@ header {
   flex: none; padding: 12px 22px 11px; background: var(--paper);
   border-bottom: 1px solid var(--rule);
 }
+
+/* an opened reference row runs to a hundred and fifty names.  The bar takes a
+   third of the pane at most and scrolls inside it: the page it describes must
+   not be pushed off the screen by its own header. */
+.rhead, .vhead { max-height: 33vh; overflow-y: auto; scrollbar-width: thin; }
+.rhead::-webkit-scrollbar, .vhead::-webkit-scrollbar { width: 7px; }
+.rhead::-webkit-scrollbar-thumb { background: var(--rule); }
+.vhead::-webkit-scrollbar-thumb { background: var(--machine-3); }
 .rid { display: flex; align-items: baseline; gap: 12px; margin-top: 7px; }
 .rid .lbl {
   font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
@@ -240,11 +266,17 @@ header {
 }
 .rid .src { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
 
-.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 9px; }
+/* a row of neighbours, one row per kind of neighbour: what is marked beside
+   this, what it cites, what cites it */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 7px; }
 .chips i {
   font-style: normal; font-family: var(--mono); font-size: 9.5px;
-  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); margin-right: 2px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
+  margin-right: 2px; min-width: 52px;      /* the labels line up down the rows */
 }
+.chip.dead { color: var(--ink-faint); border-color: var(--paper-2); cursor: default; }
+.chip.dead:hover { background: none; }
+.chip.more { border-style: dashed; }
 .chip {
   font-family: var(--mono); font-size: 10.5px; color: var(--rust); cursor: pointer;
   border: 1px solid rgba(169,60,22,.28); border-radius: 2px; padding: 1px 5px;
@@ -351,8 +383,15 @@ header {
 .vhead .srrtag {
   color: #e06c6c; border: 1px solid #7a3030; padding: 1px 5px; font-size: 9.5px;
 }
-.vhead .chips { margin: 0 0 0 auto; }
+/* the reference rows take the full width of the bar: there are up to three of
+   them, and right-aligning each against the id line reads as one long spill */
+.vhead .chips { width: 100%; margin: 5px 0 0; }
 .vhead .chips i { color: var(--machine-dim); }
+.vhead .chip.dead { color: var(--machine-dim); border-color: var(--machine-rule); }
+/* a neighbour with no citation of its own: shown when asked for, and told
+   apart from the ones that carry the correspondence */
+.vhead .chip.dim { color: var(--machine-dim); border-color: var(--machine-rule); }
+.vhead .chip.dim:hover { background: rgba(255,255,255,.05); }
 .vhead .chip {
   color: var(--amber); border-color: rgba(221,139,60,.3); text-transform: none;
   letter-spacing: 0; font-size: 10.5px;

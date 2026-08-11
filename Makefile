@@ -23,7 +23,10 @@ site:
 sync:
 	mkdir -p sandbox/lean sandbox/tex/common sandbox/tex/note \
 	         sandbox/tex/P3-easypqc/sections
-	cp $(PQCPLUS)/Formalization/PQCPlus/*.lean            sandbox/lean/
+## the Lean tree is copied as a tree: the extractor keys a module by its path
+## under sandbox/lean, and the file index shows that structure
+	rsync -am --include='*/' --include='*.lean' --exclude='*' \
+	      $(PQCPLUS)/Formalization/PQCPlus/ sandbox/lean/
 	cp $(PQCPLUS)/auto-research/P3-easypqc/main.tex       sandbox/tex/P3-easypqc/
 	cp $(PQCPLUS)/auto-research/P3-easypqc/sections/*.tex sandbox/tex/P3-easypqc/sections/
 	cp $(PQCPLUS)/auto-research/common/preamble.tex       sandbox/tex/common/

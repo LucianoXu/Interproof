@@ -88,6 +88,7 @@ class TexItem:
     subsection: str = ""
     order: int = 0
     refs: list[str] = field(default_factory=list)   # labels this item cites
+    cited_by: list[str] = field(default_factory=list)   # item keys citing it
     rect: dict | None = None                        # synctex box in the PDF
     proof_rect: dict | None = None
 
@@ -227,6 +228,7 @@ class LeanDecl:
     section: str = ""
     refs: list[dict] = field(default_factory=list)
     has_sorry: bool = False
+    uses: list[str] = field(default_factory=list)   # "File::name" it names in code
 
 
 def comment_spans(text: str) -> list[tuple[int, int]]:
@@ -271,14 +273,16 @@ def comment_spans(text: str) -> list[tuple[int, int]]:
 
 def parse_lean_file(
     path: Path,
+    name: str,
     titles: dict[str, list[tuple[str, str, str]]] | None = None,
 ) -> tuple[list[LeanDecl], str, list[dict]]:
-    """Parse one Lean module.  `titles` maps an item title to the
-    `(kind, doc, label)` triples that carry it, for title-form citations."""
+    """Parse one Lean module.  `name` is how the module is referred to
+    everywhere downstream — its path under the Lean root, extension dropped, so
+    two subdirectories may hold the same file name.  `titles` maps an item title
+    to the `(kind, doc, label)` triples that carry it, for title-form citations."""
     titles = titles or {}
     text = path.read_text(encoding="utf-8", errors="replace")
     lines = text.split("\n")
-    name = path.stem
 
     # line -> True if inside a comment (for reference harvesting)
     spans = comment_spans(text)
@@ -407,6 +411,115 @@ def parse_lean_file(
     return decls, module_doc, refs
 
 
+# a dotted Lean identifier, as it is written in code
+IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_'!?]*(?:\.[A-Za-z_][A-Za-z0-9_'!?]*)*")
+
+
+def declaration_uses(files: list[dict]) -> int:
+    """Which declarations each declaration names in its own code.
+
+    The other half of the reference structure: the paper's items cite each
+    other by `\\Cref`, and the Lean declarations cite each other by *using*
+    each other.  Both are read here, and the viewer shows each in both
+    directions — what a thing rests on, and what rests on it.
+
+    This is a name match over source text, in the same spirit as the rest of
+    this file: it sees a declaration named in code and nothing else.  It cannot
+    see a lemma a `simp` set applies for you, and a local binder that happens to
+    share a declaration's name reads as a use.  Comments are excluded — a name
+    discussed in a docstring is prose, and the citations that matter there are
+    already harvested as paper links.
+    """
+    table: dict[str, list[tuple[str, str]]] = {}      # name -> [(file, key)]
+    for f in files:
+        for d in f["decls"]:
+            table.setdefault(d["name"], []).append((f["name"], f["name"] + "::" + d["name"]))
+
+    edges = 0
+    for f in files:
+        text = f["text"]
+        lines = text.split("\n")
+        inside = bytearray(len(text) + 1)
+        for a, b in comment_spans(text):
+            for k in range(a, min(b, len(text))):
+                inside[k] = 1
+        off = [0]
+        for ln in lines:
+            off.append(off[-1] + len(ln) + 1)
+
+        for d in f["decls"]:
+            a, b = off[d["line"] - 1], off[min(d["end_line"], len(lines))]
+            hits: set[str] = set()
+            for m in IDENT_RE.finditer(text, a, b):
+                if inside[m.start()]:
+                    continue
+                cands = table.get(m.group(0))
+                if not cands or m.group(0) == d["name"]:
+                    continue
+                # a name is almost always unique in the corpus; when it is not,
+                # the one in this module wins and a genuine tie is dropped
+                # rather than guessed at
+                same = [c for c in cands if c[0] == f["name"]]
+                if len(same) == 1:
+                    hits.add(same[0][1])
+                elif len(cands) == 1:
+                    hits.add(cands[0][1])
+            d["uses"] = sorted(hits)
+            edges += len(hits)
+    return edges
+
+
+IMPORT_RE = re.compile(r"^import\s+([A-Za-z0-9_.]+)", re.M)
+
+
+def import_order(files: list[dict]) -> list[dict]:
+    """Modules in dependency order: each one follows everything it imports.
+
+    This is the formalization's own order — what `PQCPlus.lean` lists, and the
+    order the modules are meant to be read in.  The file system's alphabetical
+    order is an accident, and it puts `Universality` fourteenth and `Ambient`,
+    which everything rests on, first only by luck of the letter A.
+
+    Which imports are internal is not assumed: an import names a module by its
+    Lean path, and the root prefix (`PQCPlus.`) is whatever prefix the imports
+    that do resolve agree on, so nothing here knows the package's name.
+    """
+    dotted = {f["name"].replace("/", "."): f["name"] for f in files}
+    raw = {f["name"]: IMPORT_RE.findall(f["text"]) for f in files}
+
+    prefixes: dict[str, int] = {}
+    for targets in raw.values():
+        for t in targets:
+            for m in dotted:
+                if t == m or t.endswith("." + m):
+                    prefixes[t[:len(t) - len(m)]] = prefixes.get(t[:len(t) - len(m)], 0) + 1
+    root = min(prefixes, key=lambda p: (-prefixes[p], len(p))) if prefixes else ""
+
+    deps = {f["name"]: [dotted[t[len(root):]] for t in raw[f["name"]]
+                        if t.startswith(root) and t[len(root):] in dotted]
+            for f in files}
+    for f in files:
+        f["imports"] = deps[f["name"]]
+
+    # depth = longest import chain reaching the module; an edge always raises
+    # it, so ordering by depth is a topological order.  Cycles cannot occur in
+    # Lean imports, but a guard keeps a malformed tree from recursing forever.
+    depth: dict[str, int] = {}
+
+    def d(name: str, seen: frozenset[str]) -> int:
+        if name in depth:
+            return depth[name]
+        if name in seen:
+            return 0
+        got = max((d(p, seen | {name}) + 1 for p in deps[name]), default=0)
+        depth[name] = got
+        return got
+
+    for f in files:
+        d(f["name"], frozenset())
+    return sorted(files, key=lambda f: (depth[f["name"]], f["name"]))
+
+
 # --------------------------------------------------------------------------
 # The document set
 #
@@ -459,6 +572,24 @@ def doc_files(d: dict) -> list[Path]:
     return out
 
 
+def attach_cited_by(tex_items: dict[str, TexItem]) -> int:
+    """Invert the papers' cross-references.
+
+    An item already knows what it cites; what cites *it* is the direction a
+    reader coming from the Lean side asks for first, and it exists nowhere in
+    the source — only in the sum of every other item's `\\Cref`s.
+    """
+    edges = 0
+    for key, it in tex_items.items():
+        for lbl in it.refs:
+            hit = next((f"{d}::{lbl}" for d in (it.doc, *(x["id"] for x in DOCS))
+                        if f"{d}::{lbl}" in tex_items), None)
+            if hit and hit != key and key not in tex_items[hit].cited_by:
+                tex_items[hit].cited_by.append(key)
+                edges += 1
+    return edges
+
+
 def attach_pdf_rects(tex_items: dict[str, TexItem]) -> int:
     """Locate every item in its compiled PDF via SyncTeX forward search.
 
@@ -508,6 +639,7 @@ def main() -> int:
               for d in DOCS}
 
     located = attach_pdf_rects(tex_items)
+    tex_refs = attach_cited_by(tex_items)
 
     # title -> the items carrying it, for citations that name an item in prose
     titles: dict[str, list[tuple[str, str, str]]] = {}
@@ -516,13 +648,18 @@ def main() -> int:
             titles.setdefault(it.title, []).append((it.kind, it.doc, it.label))
 
     lean_files, all_refs = [], []
-    for f in sorted(LEAN_DIR.glob("*.lean")):
+    # recursive: a formalization organises itself in directories, and the file
+    # index in the viewer shows that structure rather than flattening it
+    for f in sorted(LEAN_DIR.rglob("*.lean")):
         if f.stem.startswith("_root_"):
             continue
-        decls, mdoc, refs = parse_lean_file(f, titles)
+        rel = f.relative_to(LEAN_DIR).as_posix()
+        name = rel[:-len(".lean")]
+        decls, mdoc, refs = parse_lean_file(f, name, titles)
         text = f.read_text(encoding="utf-8")
         lean_files.append({
-            "name": f.stem,
+            "name": name,
+            "path": rel,               # where it sits under the Lean root
             "module_doc": mdoc,
             "lines": len(text.split("\n")),
             # the module verbatim: the pane scrolls the file and bands the
@@ -532,6 +669,8 @@ def main() -> int:
             "decls": [asdict(d) for d in decls],
         })
         all_refs.extend(refs)
+    lean_files = import_order(lean_files)
+    decl_refs = declaration_uses(lean_files)
 
     known = lambda lbl: any(lbl in s for s in labels.values())
     links, unresolved = [], []
@@ -561,7 +700,9 @@ def main() -> int:
     manifest = {
         "generated_from": "sandbox/ (source copies; no Lean build)",
         # the viewer takes its document set from here rather than knowing one
-        "docs": [{"id": d["id"], "title": d["title"], "short": d["short"]}
+        "docs": [{"id": d["id"], "title": d["title"], "short": d["short"],
+                  "main": (d["root"] / d["main"]).relative_to(SANDBOX).as_posix(),
+                  "files": [f.relative_to(SANDBOX).as_posix() for f in doc_files(d)]}
                  for d in DOCS],
         "tex": {k: asdict(v) for k, v in tex_items.items()},
         "lean": lean_files,
@@ -574,6 +715,8 @@ def main() -> int:
             "lean_files": len(lean_files),
             "lean_decls": sum(len(f["decls"]) for f in lean_files),
             "lean_lines": sum(f["lines"] for f in lean_files),
+            "tex_refs": tex_refs,          # \Cref edges between paper items
+            "decl_refs": decl_refs,        # name edges between Lean declarations
             "links": len(links),
             "links_by_title": sum(1 for l in links if l.get("via") == "title"),
             "linked_items": len(by_item),
@@ -591,6 +734,8 @@ def main() -> int:
           f"{s['lean_lines']} lines")
     print(f"links          {s['links']} citations -> {s['linked_items']} distinct items"
           f"  ({s['links_by_title']} cited by title)")
+    print(f"references     {s['tex_refs']} between paper items, "
+          f"{s['decl_refs']} between Lean declarations")
     print(f"located        {s['located']} items placed in the PDFs by synctex")
     print(f"unresolved     {s['unresolved']}")
     if unresolved:

@@ -68,12 +68,34 @@ make distclean  # also drop the compiled PDFs
 `tools/extract.py` parses both sides as **source text**:
 
 - *LaTeX*: every labelled `theorem/lemma/definition/…` environment with its
-  statement, its following `proof`, its section path, and its source line span.
+  statement, its following `proof`, its section path, its source line span, and
+  the labels it cites — from the proof as much as the statement, since a proof
+  citing a lemma is what a dependency *is*. What cites an item is nowhere in
+  the source, only in the sum of every other item's `\Cref`s, so it is
+  inverted here.
 - *Lean*: declarations with docstrings, module docstrings, `/-! ## … -/` section
   headers, and every citation occurring **in a comment**, resolved against the
   two label universes. Ambiguous labels are disambiguated by the nearest `P3` /
   `note` marker; unresolvable ones are reported as dangling — that report is the
-  `span`-style consistency check.
+  `span`-style consistency check. A module is keyed by its path under
+  `sandbox/lean` rather than by its file name, so a source tree with
+  subdirectories survives into the index instead of being flattened.
+
+  The declarations' own reference structure is read the same way: the names a
+  declaration writes **in its code** that resolve to another declaration. This
+  is a name match, not elaboration — it cannot see a lemma that a `simp` set
+  applied for you, and a local binder sharing a declaration's name reads as a
+  use. Comments are excluded: a name discussed in a docstring is prose, and the
+  citations that matter there are already harvested as paper links.
+
+  Modules are then put in **import order** — each after everything it imports,
+  ties by depth — and every list in the viewer uses it. Alphabetical order is
+  the file system's and says nothing about the development: it opens on
+  `Ambient` only by luck of the letter A, and scatters the coverage table into
+  noise. In import order that table reads as a diagonal, the mechanization
+  advancing as the paper does. Which imports are internal is not assumed: the
+  root prefix (`PQCPlus.`) is whatever prefix the imports that resolve agree
+  on, so nothing here knows the package's name either.
 
   A citation takes three forms in these sources, and all three count: the
   canonical `note, def:proc-decl`, and the two that name the item by **title** —
@@ -128,6 +150,39 @@ the precondition.
   name from another module switches the file.
 - **Lean → Paper**: pick a declaration; the left page marks every paper item it
   cites at once, focused one first.
+- **Files**: the third index, and the only one that does not go through the
+  correspondence — the sources as they sit on disk. The papers as a flat list,
+  the Lean modules in their directory tree. Picking a document opens it whole
+  on the left, picking a module opens it whole on the right, nothing banded,
+  each side set independently. Two directional modes drive both pages from one
+  selection; this one lets the reader put an arbitrary paper beside an
+  arbitrary module, which is the one pairing the citations cannot arrange.
+  The modules are in import order, and what a module imports is named above
+  the pane and followable.
+- **References**, above each page and on both sides: what the thing you are
+  reading rests on, and what rests on it — `cites` / `cited by` for a paper
+  item, `uses` / `used by` for a declaration. The two directions are separate
+  rows, because they answer different questions and one undifferentiated list
+  of neighbours answers neither. Every name is followable, so a proof can be
+  walked backwards to its hypotheses on either side.
+
+  On the Lean side the rows are **restricted to declarations that carry a
+  citation of their own** — 62 of the 906. A proof rests on a hundred names and
+  nearly all of them are plumbing: `CqState` alone is used by 152 declarations,
+  which is a fact about the semantic domain, not about the correspondence the
+  reader came for. Filtered, the longest `used by` is 21. What is left out is
+  counted (`+137 uncited`) and one click away, never silently dropped — the
+  same click opens a row cut for length. A reference to a *section* is named
+  but not offered, since only labelled statements are placed in the PDF.
+- **Formalized** (`a`): a standing overlay that marks *every* item with a Lean
+  counterpart, in green, at once — under the selection band and independent of
+  it. The reading modes answer "where is this one item"; this answers the
+  question asked before that one, and answers it on the page itself: how much
+  of this paper has been mechanized, and which parts. A gap reads as a gap —
+  an unmarked block between two marked ones — rather than as an absence from a
+  list. The marks are the only clickable one: a click opens that item's
+  declaration on the right, so the paper becomes an index into the Lean
+  sources. `\Cref` links stay on top of the overlay and still follow.
 - **Coverage** (`g`): every labelled item × every Lean module. Also lists the
   items with no Lean counterpart at all.
 - Both pages are whole documents scrolled, not extracts: the left is the
@@ -135,13 +190,16 @@ the precondition.
   proof that follows), the right is the `.lean` file with its line numbers. A
   declaration read without what surrounds it is a declaration read without its
   place in the module.
-- `/` filter · `j`/`k` move · citations are clickable in both directions, and so
-  are the `\Cref` links inside the PDF itself · the URL hash deep-links an item.
+- `/` filter · `j`/`k` move · `a` formalized · `g` coverage · citations are
+  clickable in both directions, and so are the `\Cref` links inside the PDF
+  itself · the URL hash deep-links an item.
 
 ## What the run says about PQCPlus
 
 134 citations (14 of them by title), 0 dangling, 906 Lean declarations over
 18,413 lines in 14 modules; all 46 labelled statements located in the PDFs.
+Within the sides: 54 cross-references between paper items, 4,472 name edges
+between declarations.
 20 of 28 P3 statements and 14 of 18 note statements have a Lean counterpart.
 
 Reading only canonical `kind:label` citations had put the note at 8 of 18. The
@@ -166,7 +224,9 @@ not a reader gap. `lem:comb` is explicitly out of scope. On the P3 side
   for both. Everything here is source text; the syntax colouring is a
   tokenizer, not Lean's grammar.
 - Citations are trusted, not verified: nothing checks that a Lean declaration
-  really states what the cited paper item says.
+  really states what the cited paper item says. The same holds one level down:
+  the `uses` graph is what the source *names*, which is a good approximation of
+  what a proof depends on and not the same thing.
 - The band is only as good as SyncTeX's line attribution. It is checked against
   the page text, but an item whose `\begin` is inside a macro would drift.
 - `\Cref`s are clickable inside the P3 PDF only: the note is built without

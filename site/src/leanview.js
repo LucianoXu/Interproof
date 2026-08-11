@@ -158,6 +158,7 @@ window.LeanView = {
   load: load,
   show: show,
   clear: clear,
+  top: function () { scroller.scrollTo({ top: 0 }); },
   /* the pane was given over to something else; re-render on the next load */
   forget: function () { cur = null; },
   file: function () { return cur; },

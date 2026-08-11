@@ -32,11 +32,25 @@ LEAN.forEach(function (f) {
   f.decls.forEach(function (d) { DECL[f.name + "::" + d.name] = d; });
 });
 
-/* citations grouped by lean declaration */
+/* citations grouped by lean declaration, and per module, for the file index */
 var BY_DECL = {};                    // "File::name" (or "File::⟨module⟩") -> links
+var BY_FILE = {};                    // "File" -> citation count
 LINKS.forEach(function (l) {
   var k = l.file + "::" + (l.decl || "⟨module⟩");
   (BY_DECL[k] = BY_DECL[k] || []).push(l);
+  BY_FILE[l.file] = (BY_FILE[l.file] || 0) + 1;
+});
+
+/* the reference structure among Lean declarations.  `uses` — what a
+   declaration names in its own code — is in the manifest; what uses it exists
+   only as the sum of every other declaration's, so it is inverted here. */
+var USES = {}, USEDBY = {};
+LEAN.forEach(function (f) {
+  f.decls.forEach(function (d) {
+    var k = f.name + "::" + d.name;
+    USES[k] = d.uses || [];
+    USES[k].forEach(function (t) { (USEDBY[t] = USEDBY[t] || []).push(k); });
+  });
 });
 
 /* labels that exist, per document — for xref resolution */
@@ -51,7 +65,11 @@ function esc(s) {
    state
    ========================================================================= */
 
-var state = { mode: "paper", sel: null, q: "", proof: false };
+/* `sel` is the focused rail row.  The file index opens two things at once —
+   one document, one module — so it keeps its own pair; both stay marked in
+   the rail, and `sel` only says which of them was touched last. */
+var state = { mode: "paper", sel: null, q: "", proof: false, fdoc: null, ffile: null,
+              all: false, marked: [] };
 
 var $ = function (s) { return document.querySelector(s); };
 var railBody, rhead, verso, vhead;
@@ -68,6 +86,34 @@ function itemsOrdered() {
 var KINDSHORT = { theorem: "thm", lemma: "lem", definition: "def", proposition: "prop",
                   corollary: "cor", remark: "rem", example: "ex", fact: "fact",
                   conjecture: "conj", assumption: "assm" };
+
+/* what each document holds, for the file index: labelled items, and how many
+   of them a Lean module cites */
+var DOCSTAT = {};
+DOCS.forEach(function (d) { DOCSTAT[d.id] = { items: 0, linked: 0 }; });
+itemsOrdered().forEach(function (e) {
+  var s = DOCSTAT[e[1].doc];
+  if (!s) return;
+  s.items++;
+  if ((BY[e[0]] || []).length) s.linked++;
+});
+
+/* the Lean sources by directory — the file index mirrors the tree rather than
+   flattening it, because in a formalization the directory is the first thing
+   that says what a module is for.  Inside a directory the manifest's order is
+   kept, which is import order: alphabetical order is the file system's, and it
+   says nothing about how the development is built up. */
+function leanTree() {
+  var byDir = {}, dirs = [];
+  LEAN.forEach(function (f) {
+    var p = f.path || f.name + ".lean";
+    var cut = p.lastIndexOf("/");
+    var dir = cut < 0 ? "" : p.slice(0, cut);
+    if (!byDir[dir]) { byDir[dir] = []; dirs.push(dir); }
+    byDir[dir].push({ file: f, base: p.slice(cut + 1), depth: dir ? dir.split("/").length : 0 });
+  });
+  return dirs.map(function (d) { return { dir: d, files: byDir[d] }; });
+}
 
 /* ---- rail -------------------------------------------------------------- */
 
@@ -92,6 +138,44 @@ function buildRail() {
         '<div class="ct">' + (ct || "·") + "</div></div>";
       n++;
     });
+  } else if (state.mode === "files") {
+    /* one row per source file: the documents flat, the modules as they sit
+       on disk.  Nothing here depends on the correspondence — this is the
+       index for a reader who knows what file they want. */
+    var frow = function (key, kd, nm, ct, has, pad) {
+      var open = key === "paper::" + state.fdoc || key === "lean::" + state.ffile;
+      html += '<div class="itm file' + (has ? " has" : "") + (open ? " sel" : "") +
+        '" data-key="' + esc(key) + '" style="animation-delay:' + Math.min(n * 8, 260) + 'ms">' +
+        '<div class="kd">' + esc(kd) + "</div>" +
+        '<div class="nm"' + (pad ? ' style="padding-left:' + pad + 'px"' : "") + ">" +
+        esc(nm) + "</div>" +
+        '<div class="ct">' + esc(ct) + "</div></div>";
+      n++;
+    };
+
+    var docs = DOCS.filter(function (d) {
+      return !q || (d.id + " " + d.title + " " + (d.main || "")).toLowerCase().indexOf(q) >= 0;
+    });
+    if (docs.length) {
+      html += '<div class="grp">papers</div>';
+      docs.forEach(function (d) {
+        var s = DOCSTAT[d.id];
+        frow("paper::" + d.id, d.id, d.title, s.items, s.linked > 0, 0);
+      });
+    }
+    leanTree().forEach(function (g) {
+      var files = g.files.filter(function (r) {
+        return !q || (r.file.path || r.file.name).toLowerCase().indexOf(q) >= 0;
+      });
+      if (!files.length) return;
+      var sep = ' <span class="dim">/</span> ';
+      html += '<div class="grp">lean' +
+        (g.dir ? sep + esc(g.dir).split("/").join(sep) : "") + "</div>";
+      files.forEach(function (r) {
+        frow("lean::" + r.file.name, "lean", r.base,
+             r.file.lines.toLocaleString(), (BY_FILE[r.file.name] || 0) > 0, r.depth * 10);
+      });
+    });
   } else {
     LEAN.forEach(function (f) {
       var rows = [];
@@ -99,21 +183,24 @@ function buildRail() {
       if (BY_DECL[mk]) rows.push(["⟨module⟩", BY_DECL[mk].length, mk]);
       f.decls.forEach(function (d) {
         var k = f.name + "::" + d.name;
+        // a declaration reached by following a reference has no citations of
+        // its own; it is still where the reader is, so the rail says so
         if (BY_DECL[k]) rows.push([d.name, BY_DECL[k].length, k]);
+        else if (state.sel === k) rows.push([d.name, 0, k]);
       });
       rows = rows.filter(function (r) {
         if (!q) return true;
-        var cited = BY_DECL[r[2]].map(function (l) { return l.label; }).join(" ");
+        var cited = (BY_DECL[r[2]] || []).map(function (l) { return l.label; }).join(" ");
         return (f.name + " " + r[0] + " " + cited).toLowerCase().indexOf(q) >= 0;
       });
       if (!rows.length) return;
       html += '<div class="grp">' + esc(f.name) + ".lean · " + f.lines + " lines</div>";
       rows.forEach(function (r) {
-        html += '<div class="itm has' + (state.sel === r[2] ? " sel" : "") +
+        html += '<div class="itm' + (r[1] ? " has" : "") + (state.sel === r[2] ? " sel" : "") +
           '" data-key="' + r[2] + '" style="animation-delay:' + Math.min(n * 8, 260) + 'ms">' +
           '<div class="kd">' + (r[0] === "⟨module⟩" ? "mod" : "decl") + "</div>" +
           '<div class="nm">' + esc(r[0]) + "</div>" +
-          '<div class="ct">' + r[1] + "</div></div>";
+          '<div class="ct">' + (r[1] || "·") + "</div></div>";
         n++;
       });
     });
@@ -137,6 +224,75 @@ function located(doc) {
   return LOCATED[doc];
 }
 
+/* ---- the formalized overlay -------------------------------------------- */
+
+/* The reading modes answer "where is this one item".  This answers the
+   question asked before that one: how much of the paper has been mechanized at
+   all.  Every located item with a Lean counterpart is marked in the page at
+   once, and a mark is clickable — so the paper itself becomes the index into
+   the machine side, and the gaps are visible as gaps rather than as absences
+   from a list.  The item being read is left to its own band. */
+function allMarks(doc) {
+  if (!state.all) return [];
+  return located(doc).filter(function (e) {
+    return (BY[e.key] || []).length && state.marked.indexOf(e.key) < 0;
+  }).map(function (e) {
+    var n = BY[e.key].length, it = TEX[e.key];
+    return { key: e.key, rect: e.rect,
+             title: it.kind + " " + it.label +
+                    (it.title ? " — " + it.title : "") +
+                    " · " + n + " citation" + (n === 1 ? "" : "s") };
+  });
+}
+
+function toggleAll(on) {
+  state.all = on === undefined ? !state.all : on;
+  $("#allbtn").classList.toggle("on", state.all);
+  PDFView.repaintMarks();
+}
+
+/* ---- reference rows ---------------------------------------------------- */
+
+/* A reference has a direction, and the two directions answer different
+   questions: what a statement rests on, and what rests on it.  They are shown
+   as separate rows rather than one undifferentiated list of neighbours. */
+
+var CHIPCAP = 12;
+var expand = {};                     // row -> the reader asked for all of it
+
+/* one labelled row.  `items` are {key, text, cls} and `more` names what is
+   being held back, so a shortened row says so instead of just ending. */
+function chipRow(label, items, attr, row, more) {
+  if (!items.length && !more) return "";
+  var h = '<div class="chips"><i>' + esc(label) + "</i>";
+  items.forEach(function (c) {
+    h += '<span class="chip' + (c.cls ? " " + c.cls : "") + '"' +
+         (c.key ? " " + attr + '="' + esc(c.key) + '"' : "") + ">" + esc(c.text) + "</span>";
+  });
+  if (more) h += '<span class="chip more" data-more="' + row + '">' + esc(more) + "</span>";
+  return h + "</div>";
+}
+
+/* a plain row, cut at a length the head can carry */
+function capped(items, row) {
+  return (expand[row] || items.length <= CHIPCAP)
+    ? { items: items, more: "" }
+    : { items: items.slice(0, CHIPCAP), more: "+" + (items.length - CHIPCAP) };
+}
+
+var ZOOMTOOLS = '<button class="rbtn" data-zoom="0.9">&minus;</button>' +
+                '<button class="rbtn" data-zoom="1.1">+</button>' +
+                '<button class="rbtn" data-zoom="fit">fit</button>';
+
+function wireZoom(root) {
+  root.querySelectorAll("[data-zoom]").forEach(function (b) {
+    b.onclick = function () {
+      var z = b.dataset.zoom;
+      if (z === "fit") PDFView.refit(); else PDFView.zoom(+z);
+    };
+  });
+}
+
 /* the bar above the PDF: where you are, what it cites, how to read it */
 function paperHead(keys, focus) {
   var it = TEX[keys[focus]];
@@ -150,43 +306,61 @@ function paperHead(keys, focus) {
     h += '<button class="rbtn' + (state.proof ? " on" : "") + '" id="proofbtn">' +
          "with proof</button>";
   }
-  h += '<button class="rbtn" data-zoom="0.9">&minus;</button>' +
-       '<button class="rbtn" data-zoom="1.1">+</button>' +
-       '<button class="rbtn" data-zoom="fit">fit</button></span></div>';
+  h += ZOOMTOOLS + "</span></div>";
 
   h += '<div class="rid"><span class="lbl">' + esc(it.kind) + " — " + esc(it.label) +
        '</span><span class="src">' + esc(it.doc + "/" + it.file) + ":" + it.line +
        "</span></div>";
 
-  /* items this one cross-references, and — when several are marked at once —
-     the siblings, so the marks in the scroll are all reachable by name */
-  var chips = "";
+  /* when several items are marked at once, the siblings — so every mark in the
+     scroll is reachable by name — and then the item's own references, each
+     direction on its own row */
+  var marked = [];
   keys.forEach(function (k, i) {
     if (i === focus || !TEX[k]) return;
-    chips += '<span class="chip on" data-go="' + k + '">' + esc(TEX[k].label) + "</span>";
+    marked.push({ key: k, text: TEX[k].label, cls: "on" });
   });
+  var cites = [];
   (it.refs || []).forEach(function (l) {
     var k = findLabel(l, it.doc);
-    if (k && keys.indexOf(k) < 0) chips += '<span class="chip" data-go="' + k + '">' + esc(l) + "</span>";
+    if (!k || keys.indexOf(k) >= 0) return;
+    // a section is a real reference but not a place the viewer can go: only
+    // labelled statements are placed in the PDF.  Named, not offered.
+    cites.push(TEX[k].rect ? { key: k, text: l } : { key: "", text: l, cls: "dead" });
   });
-  if (chips) h += '<div class="chips"><i>cites</i>' + chips + "</div>";
+  var by = [];
+  (it.cited_by || []).forEach(function (k) {
+    if (TEX[k] && keys.indexOf(k) < 0) by.push({ key: k, text: TEX[k].label });
+  });
+
+  var rows = [["marked", marked, "pmarked"], ["cites", cites, "pcites"],
+              ["cited by", by, "pcitedby"]];
+  rows.forEach(function (r) {
+    var c = capped(r[1], r[2]);
+    h += chipRow(r[0], c.items, "data-go", r[2], c.more);
+  });
   return h;
+}
+
+function paperHeadShow(keys, focus) {
+  rhead.innerHTML = paperHead(keys, focus);
+  wire(rhead);
+  wireZoom(rhead);
+  var pb = rhead.querySelector("#proofbtn");
+  if (pb) pb.onclick = function () { state.proof = !state.proof; paperShow(keys, focus); };
+  // opening a cut row re-renders the bar only: the page must not jump because
+  // the reader asked to see more names
+  rhead.querySelectorAll("[data-more]").forEach(function (el) {
+    el.onclick = function () { expand[el.dataset.more] = true; paperHeadShow(keys, focus); };
+  });
 }
 
 /* put the marks in the scroll and bring the focused one into view */
 function paperShow(keys, focus) {
   var it = TEX[keys[focus]];
   if (!it) return;
-  rhead.innerHTML = paperHead(keys, focus);
-  wire(rhead);
-  rhead.querySelectorAll("[data-zoom]").forEach(function (b) {
-    b.onclick = function () {
-      var z = b.dataset.zoom;
-      if (z === "fit") PDFView.refit(); else PDFView.zoom(+z);
-    };
-  });
-  var pb = rhead.querySelector("#proofbtn");
-  if (pb) pb.onclick = function () { state.proof = !state.proof; paperShow(keys, focus); };
+  state.marked = keys;               // these carry their own band; no overlay
+  paperHeadShow(keys, focus);
 
   /* only the focused document can be shown at once */
   var same = keys.filter(function (k) { return TEX[k] && TEX[k].doc === it.doc; });
@@ -198,6 +372,7 @@ function paperShow(keys, focus) {
 
   PDFView.load(it.doc, PDFS[it.doc], located(it.doc)).then(function () {
     PDFView.show(rects.filter(Boolean), idx);
+    PDFView.repaintMarks();
   });
 }
 
@@ -229,24 +404,62 @@ function leanHead(keys, focus, groups, total) {
   h += '<span class="loc">' + esc(fname) + ".lean:" +
        (d ? d.line : leanRange(keys[focus], groups[keys[focus]]).from) + "</span></span>";
 
-  var chips = "";
-  keys.forEach(function (k, i) {
-    if (i === focus) return;
+  /* a declaration name as a chip, qualified when it lives in another module */
+  function declChip(k) {
     var p = k.split("::");
-    chips += '<span class="chip" data-decl="' + esc(k) + '">' +
-             (p[0] === fname ? "" : esc(p[0]) + ".") + esc(p[1]) + "</span>";
-  });
-  if (chips) h += '<div class="chips"><i>also</i>' + chips + "</div>";
+    return { key: k, text: (p[0] === fname ? "" : p[0] + ".") + p[1] };
+  }
+
+  /* A proof rests on a hundred names, nearly all of them plumbing: `CqState`
+     alone is used by 152 declarations.  What this reader is following is the
+     correspondence, so a row shows the neighbours that carry a citation of
+     their own — the formalized statements this one rests on, and those that
+     rest on it.  The rest are counted and one click away, never dropped. */
+  function refRow(label, list, row) {
+    var linked = [], rest = [];
+    list.forEach(function (k) { (BY_DECL[k] ? linked : rest).push(k); });
+    if (expand[row]) {
+      return chipRow(label, linked.map(declChip).concat(rest.map(function (k) {
+        var c = declChip(k); c.cls = "dim"; return c;
+      })), "data-use", row, "");
+    }
+    return chipRow(label, linked.map(declChip), "data-use", row,
+                   rest.length ? "+" + rest.length + " uncited" : "");
+  }
+
+  var also = [];
+  keys.forEach(function (k, i) { if (i !== focus) also.push(declChip(k)); });
+  var c = capped(also, "lalso");
+  h += chipRow("also", c.items, "data-decl", "lalso", c.more);
+  // the same two directions as the paper side, in the machine's own terms
+  h += refRow("uses", USES[keys[focus]] || [], "luses");
+  h += refRow("used by", USEDBY[keys[focus]] || [], "lusedby");
   return h;
+}
+
+function leanHeadShow(keys, focus, groups, total) {
+  vhead.innerHTML = leanHead(keys, focus, groups, total);
+  vhead.querySelectorAll("[data-decl]").forEach(function (el) {
+    el.onclick = function () { leanShow(keys, keys.indexOf(el.dataset.decl), groups, total); };
+  });
+  vhead.querySelectorAll("[data-use]").forEach(function (el) {
+    el.onclick = function () {
+      if (state.mode !== "lean") { state.mode = "lean"; syncModes(); }
+      select(el.dataset.use);
+    };
+  });
+  vhead.querySelectorAll("[data-more]").forEach(function (el) {
+    el.onclick = function () {
+      expand[el.dataset.more] = true;
+      leanHeadShow(keys, focus, groups, total);
+    };
+  });
 }
 
 /* show one module, banding every cited declaration it holds */
 function leanShow(keys, focus, groups, total) {
   var fname = keys[focus].split("::")[0];
-  vhead.innerHTML = leanHead(keys, focus, groups, total);
-  vhead.querySelectorAll("[data-decl]").forEach(function (el) {
-    el.onclick = function () { leanShow(keys, keys.indexOf(el.dataset.decl), groups, total); };
-  });
+  leanHeadShow(keys, focus, groups, total);
 
   var same = keys.filter(function (k) { return k.split("::")[0] === fname; });
   LeanView.load(fname, FILE[fname].text);
@@ -293,19 +506,111 @@ function selectLean(key) {
   });
   if (!cited.length) {
     rhead.innerHTML = '<div class="crumb"><span>no paper counterpart</span></div>';
+    state.marked = [];
     PDFView.clear();
+    PDFView.repaintMarks();
     return;
   }
   paperShow(cited, 0);
 }
 
+/* ---- the file index ---------------------------------------------------- */
+
+/* The two directional modes each drive both pages from one selection.  This
+   one drives one page at a time: pick a document, the left page opens it whole;
+   pick a module, the right page opens that.  Nothing is banded, because nothing
+   was selected — and the pair on screen is whatever the reader put there, which
+   is the one thing the correspondence cannot arrange for them. */
+
+function docFileHead(id) {
+  var d = DOC[id], s = DOCSTAT[id];
+  var h = '<div class="crumb"><span>' + esc(id + " · " + d.title) + "</span>" +
+          '<span class="rtools">' + ZOOMTOOLS + "</span></div>";
+  h += '<div class="rid"><span class="lbl">document</span><span class="src">' +
+       '<span id="pdfpn"></span>' + esc(d.main || "") + " · " + s.items +
+       " statements, " + s.linked + " with a Lean counterpart</span></div>";
+  return h;
+}
+
+function moduleFileHead(name) {
+  var f = FILE[name];
+  var nd = f.decls.length, nc = BY_FILE[name] || 0;
+  var srr = f.decls.filter(function (d) { return d.has_sorry; }).length;
+  var h = "<b>" + f.lines.toLocaleString() + "</b> lines · <b>" + nd + "</b> declaration" +
+          (nd === 1 ? "" : "s") + " · <b>" + nc + "</b> citation" + (nc === 1 ? "" : "s");
+  h += '<span class="vid"><span class="k">module</span><span class="n">' + esc(name) + "</span>";
+  if (srr) h += '<span class="srrtag">' + srr + " sorry</span>";
+  h += '<span class="loc">lean/' + esc(f.path || name + ".lean") + "</span></span>";
+
+  /* what the module is built on: the edges the index is ordered by, walkable */
+  var imp = (f.imports || []).filter(function (m) { return FILE[m]; });
+  if (imp.length) {
+    h += '<div class="chips"><i>imports</i>' + imp.map(function (m) {
+      return '<span class="chip" data-mod="' + esc(m) + '">' + esc(m) + "</span>";
+    }).join("") + "</div>";
+  }
+  return h;
+}
+
+function showDocument(id) {
+  var moved = PDFView.doc() !== id;
+  state.fdoc = id;
+  state.marked = [];
+  rhead.innerHTML = docFileHead(id);
+  wireZoom(rhead);
+  PDFView.load(id, PDFS[id], located(id)).then(function () {
+    if (state.mode !== "files" || state.fdoc !== id) return;
+    PDFView.clear();                       // a file is open, no item is selected
+    PDFView.repaintMarks();
+    if (moved) PDFView.top();
+    var pn = rhead.querySelector("#pdfpn");
+    if (pn) pn.textContent = PDFView.pages() + " pages · ";
+  });
+}
+
+function showModule(name) {
+  var moved = LeanView.file() !== name;
+  state.ffile = name;
+  vhead.innerHTML = moduleFileHead(name);
+  vhead.querySelectorAll("[data-mod]").forEach(function (el) {
+    el.onclick = function () { select("lean::" + el.dataset.mod); };
+  });
+  LeanView.load(name, FILE[name].text);
+  LeanView.clear();
+  if (moved) LeanView.top();
+  wire(verso);
+}
+
+function selectFiles(key) {
+  var cut = key.indexOf("::");
+  var what = key.slice(0, cut), id = key.slice(cut + 2);
+  if (what === "paper") showDocument(id); else showModule(id);
+}
+
+/* entering the mode moves no scroll position: whatever the two pages were
+   showing is what the index opens on, unless a key names one of them */
+function enterFiles(key) {
+  var want = key ? key.slice(0, key.indexOf("::")) : "";
+  var id = key ? key.slice(key.indexOf("::") + 2) : "";
+  state.fdoc = (want === "paper" ? id : null) || state.fdoc || PDFView.doc() || DOCS[0].id;
+  state.ffile = (want === "lean" ? id : null) || state.ffile || LeanView.file() || LEAN[0].name;
+  showDocument(state.fdoc);
+  showModule(state.ffile);
+  state.sel = key || "paper::" + state.fdoc;
+  buildRail();
+  location.hash = encodeURIComponent(state.sel);
+}
+
 function select(key) {
   state.sel = key;
-  if (state.mode === "paper") selectPaper(key); else selectLean(key);
+  expand = {};                       // a new selection, a new set of neighbours
+  if (state.mode === "paper") selectPaper(key);
+  else if (state.mode === "files") selectFiles(key);
+  else selectLean(key);
   wire(verso);
   buildRail();
   location.hash = encodeURIComponent(key);
-  var sel = railBody.querySelector(".itm.sel");
+  var sel = railBody.querySelector('.itm[data-key="' + key + '"]');
   if (sel) sel.scrollIntoView({ block: "nearest" });
 }
 
@@ -408,9 +713,23 @@ function setMode(m) {
   if (state.mode === m) return;
   state.mode = m;
   syncModes();
+  if (m === "files") { enterFiles(null); return; }
   buildRail();
   var first = railBody.querySelector(".itm");
   if (first) select(first.dataset.key);
+}
+
+/* which index a key belongs to — the file index prefixes its own, so the three
+   key spaces stay disjoint and a deep link picks its own tab */
+function modeOf(k) {
+  if (!k) return null;
+  var cut = k.indexOf("::");
+  var head = cut < 0 ? "" : k.slice(0, cut), rest = k.slice(cut + 2);
+  if (head === "paper" && DOC[rest]) return "files";
+  if (head === "lean" && FILE[rest]) return "files";
+  if (TEX[k]) return "paper";
+  if (BY_DECL[k] || DECL[k]) return "lean";
+  return null;
 }
 
 /* ---- boot -------------------------------------------------------------- */
@@ -422,7 +741,7 @@ function boot() {
   PDFView.init($("#pdfpages"), $("#pdfscroll"), function (key) {
     if (state.mode !== "paper") { state.mode = "paper"; syncModes(); }
     select(key);
-  });
+  }, allMarks);
 
   $("#stats").innerHTML =
     '<div class="stat"><b>' + M.stats.tex_items + "</b>items</div>" +
@@ -434,6 +753,7 @@ function boot() {
     b.onclick = function () { setMode(b.dataset.mode); };
   });
   $("#covbtn").onclick = function () { toggleCov(); };
+  $("#allbtn").onclick = function () { toggleAll(); };
   $("#search").oninput = function (e) { state.q = e.target.value; buildRail(); };
 
   document.addEventListener("keydown", function (e) {
@@ -442,6 +762,7 @@ function boot() {
       return;
     }
     if (e.key === "/") { e.preventDefault(); $("#search").focus(); }
+    else if (e.key === "a") toggleAll();
     else if (e.key === "g") toggleCov();
     else if (e.key === "Escape") toggleCov(false);
     else if (e.key === "j" || e.key === "k") {
@@ -456,16 +777,21 @@ function boot() {
   window.addEventListener("hashchange", function () {
     var k = decodeURIComponent((location.hash || "").slice(1));
     if (!k || k === state.sel) return;
-    var m = TEX[k] ? "paper" : (BY_DECL[k] ? "lean" : null);
+    var m = modeOf(k);
     if (!m) return;
-    if (state.mode !== m) { state.mode = m; syncModes(); }
+    if (state.mode !== m) {
+      state.mode = m; syncModes();
+      if (m === "files") { enterFiles(k); return; }
+    }
     select(k);
   });
 
-  syncModes();
-  buildRail();
   var start = decodeURIComponent((location.hash || "").slice(1));
-  if (!TEX[start]) start = itemsOrdered()[0][0];
+  state.mode = modeOf(start) || "paper";
+  syncModes();
+  if (state.mode === "files") { enterFiles(start); return; }
+  buildRail();
+  if (!modeOf(start)) start = itemsOrdered()[0][0];
   select(start);
 }
 
