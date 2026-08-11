@@ -7,12 +7,23 @@
 # anything — which is more than any README paragraph can do.
 #
 # Requires Pages to be enabled once, with Settings -> Pages -> Source set to
-# "GitHub Actions".
+# "GitHub Actions".  Enabling it also creates a `github-pages` environment
+# whose deployment branch policy names whatever the default branch was at that
+# moment; rename or replace the default branch afterwards and deployments are
+# refused until that policy is updated too.
+#
+# A branch named here is a branch that has to keep existing.  When it does not,
+# this workflow does not fail -- it simply never runs, which looks exactly like
+# a deployment that has not happened yet.  If publishing ever goes quiet, look
+# here first.
 
 name: pages
 
+# Only `main`.  Development happens on other branches and must not spend a
+# TeX installation, a LaTeX run and a deployment every time one of them moves.
 on:
   push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -28,13 +39,6 @@ concurrency:
 
 jobs:
   build:
-    # Only the default branch is published, whatever it happens to be called.
-    # Naming `main` here is a guess about somebody else's repository, and it
-    # fails silently: the workflow simply never runs, and the absence of a
-    # deployment looks exactly like a deployment that has not happened yet.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
