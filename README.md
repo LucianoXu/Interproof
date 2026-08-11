@@ -105,6 +105,18 @@ make distclean  # also drop the compiled PDFs
   resolve to `def:local`. A citation in the `/-- … -/` docstring above a
   declaration belongs to that declaration, not to the module.
 
+  Which is also the citation's **extent**, and the right pane bands it. Two
+  rules, both learned by looking at bands that were wrong. Whether a
+  declaration has a docstring is asked of the comment spans, not guessed from a
+  line ending in `-/`: a `/-! ## … -/` section header ends that way too, and
+  taking one for a docstring sends the search back to the previous
+  declaration's `/--`, so the band starts forty lines early with a whole
+  declaration inside it. And a citation in module prose, which no declaration
+  owns, extends over the **comment block that does the citing** — one band per
+  block, never the hull of several. `lem:one-sided` is named in `StepLemmas`'
+  header and again at a section break six hundred lines down; those are two
+  places, and the file between them cites nothing.
+
 `tools/synctex.py` then places each item in its PDF. SyncTeX brackets a block
 rather than measuring it: the `\begin` line is a reliable top, but `\end` is
 credited with boxes inside the block as readily as with the paragraph after it,

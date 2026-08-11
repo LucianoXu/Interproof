@@ -127,20 +127,23 @@ function clear() {
   if (b) b.innerHTML = "";
 }
 
-/* ranges are 1-based inclusive line spans */
-function show(ranges, focus) {
+/* ranges are 1-based inclusive line spans; `on` is the one being read, and
+   there may be more than one of them — a citation in module prose can name the
+   same item from two separate blocks */
+function show(ranges) {
   var b = host.querySelector(".bands");
   if (!b || !lh) return;
   b.innerHTML = "";
   var first = null;
-  ranges.forEach(function (r, i) {
+  ranges.forEach(function (r) {
     var el = document.createElement("div");
-    el.className = "lband " + (i === focus ? "on" : "off");
+    el.className = "lband " + (r.on ? "on" : "off");
     el.style.top = (top0 + (r.from - 1) * lh) + "px";
     el.style.height = ((r.to - r.from + 1) * lh) + "px";
     b.appendChild(el);
-    if (i === focus || !first) first = el;
+    if (r.on && !first) first = el;
   });
+  if (!first) first = b.firstChild;
   if (first) scrollTo(first);
 }
 

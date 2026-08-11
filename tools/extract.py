@@ -294,6 +294,26 @@ def parse_lean_file(
     def line_of(idx: int) -> int:
         return text.count("\n", 0, idx) + 1
 
+    # every comment block, by the line it ends on and the line it starts on,
+    # with whether it is a `/-- ... -/` docstring.  Both the docstring above a
+    # declaration and the extent of a citation in module prose are read off it.
+    block_end: dict[int, tuple[int, bool]] = {}
+    block_at: list[tuple[int, int, int]] = []      # (start char, first line, last line)
+    for a, b in spans:
+        last = line_of(max(a, min(b, len(text)) - 1))
+        block_end[last] = (line_of(a), text.startswith("/--", a))
+        block_at.append((a, line_of(a), last))
+
+    def block_of(idx: int) -> tuple[int, int]:
+        """The comment block a citation sits in — the paragraph of prose that
+        does the citing, which is the whole extent of a module-level citation
+        and the only honest one: the lines between two citing blocks cite
+        nothing."""
+        for a, first, last in block_at:
+            if a <= idx and first <= line_of(idx) <= last:
+                return first, last
+        return line_of(idx), line_of(idx)
+
     # module docstring: first /-! ... -/
     module_doc = ""
     md = re.search(r"/-!(.*?)-/", text, re.S)
@@ -333,20 +353,23 @@ def parse_lean_file(
         end = nxt - 1
         while end > ln_no and not lines[end - 1].strip():
             end -= 1
-        # preceding docstring
+        # The preceding docstring, if the block above the declaration is one.
+        # Asked of the comment spans rather than of the line text: a line
+        # ending in `-/` says only that *some* comment ends there, and a
+        # `/-! ## ... -/` section header ends that way too.  Reading it as a
+        # docstring and then searching back for the `/--` that must have opened
+        # it walks into the previous declaration's docstring, and the band
+        # starts forty lines early with a whole declaration inside it.
         doc, doc_line = "", 0
         j = ln_no - 2
         while j >= 0 and (lines[j].strip().startswith("@[") or not lines[j].strip()):
             j -= 1
-        if j >= 0 and lines[j].rstrip().endswith("-/"):
-            k = j
-            while k >= 0 and "/--" not in lines[k]:
-                k -= 1
-            if k >= 0:
-                doc_line = k + 1
-                doc = "\n".join(lines[k:j + 1])
-                doc = re.sub(r"^\s*/--", "", doc).strip()
-                doc = re.sub(r"-/\s*$", "", doc).strip()
+        above = block_end.get(j + 1)
+        if above and above[1]:
+            doc_line = above[0]
+            doc = "\n".join(lines[doc_line - 1:j + 1])
+            doc = re.sub(r"^\s*/--", "", doc).strip()
+            doc = re.sub(r"-/\s*$", "", doc).strip()
         sec = ""
         for sl, st in sections:
             if sl < ln_no:
@@ -374,8 +397,11 @@ def parse_lean_file(
             if (d.doc_line or d.line) <= lno <= d.end_line:
                 owner = d.name
                 break
+        blk = block_of(start)
         return {"label": label, "line": lno, "doc_hint": doc_hint, "decl": owner,
                 "via": via, "file": name,
+                # the prose block doing the citing, for when no declaration owns it
+                "block_from": blk[0], "block_to": blk[1],
                 "context": text[max(0, start - 220):stop + 220].replace("\n", " ").strip()}
 
     refs: list[dict] = []

@@ -394,13 +394,25 @@ function paperShow(keys, focus) {
 
 /* ---- the machine page -------------------------------------------------- */
 
-/* the lines a citation occupies: the declaration it belongs to, docstring
-   included, or the citing line itself when the citation is module prose */
-function leanRange(leanKey, links) {
+/* Where a citation lives: the declaration it belongs to, docstring included,
+   or — when it is module prose, which no declaration owns — the comment block
+   that does the citing, one band per block.
+
+   Never the hull of several.  `lem:one-sided` is named in StepLemmas' header
+   and again at a section break six hundred lines down; those are two places,
+   and the file between them cites nothing. */
+function leanRanges(leanKey, links) {
   var d = DECL[leanKey];
-  if (d) return { from: d.doc_line || d.line, to: d.end_line };
-  var ls = links.map(function (l) { return l.line; });
-  return { from: Math.min.apply(null, ls), to: Math.max.apply(null, ls) };
+  if (d) return [{ from: d.doc_line || d.line, to: d.end_line }];
+  var seen = {}, out = [];
+  (links || []).forEach(function (l) {
+    var r = { from: l.block_from || l.line, to: l.block_to || l.line };
+    var id = r.from + ":" + r.to;
+    if (seen[id]) return;
+    seen[id] = 1;
+    out.push(r);
+  });
+  return out.sort(function (a, b) { return a.from - b.from; });
 }
 
 /* the bar above the file: what cites this, and where else it is cited */
@@ -417,8 +429,8 @@ function leanHead(keys, focus, groups, total) {
        '<span class="n">' + esc(dname) + "</span>";
   if (d && d.has_sorry) h += '<span class="srrtag">sorry</span>';
   if (d && d.section) h += '<span class="k">' + esc(d.section) + "</span>";
-  h += '<span class="loc">' + esc(fname) + ".lean:" +
-       (d ? d.line : leanRange(keys[focus], groups[keys[focus]]).from) + "</span></span>";
+  var at = d ? d.line : (leanRanges(keys[focus], groups[keys[focus]])[0] || {}).from;
+  h += '<span class="loc">' + esc(fname) + ".lean:" + (at || "?") + "</span></span>";
 
   /* a declaration name as a chip, qualified when it lives in another module */
   function declChip(k) {
@@ -479,8 +491,16 @@ function leanShow(keys, focus, groups, total) {
 
   var same = keys.filter(function (k) { return k.split("::")[0] === fname; });
   LeanView.load(fname, FILE[fname].text);
-  LeanView.show(same.map(function (k) { return leanRange(k, groups[k]); }),
-                same.indexOf(keys[focus]));
+  /* one key can hold several bands, so which of them is the focused one is
+     carried on the band rather than being an index into a parallel list */
+  var bands = [];
+  same.forEach(function (k) {
+    leanRanges(k, groups[k]).forEach(function (r) {
+      r.on = k === keys[focus];
+      bands.push(r);
+    });
+  });
+  LeanView.show(bands);
   wire(verso);
 }
 
