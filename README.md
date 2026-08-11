@@ -91,9 +91,10 @@ make distclean  # also drop the compiled PDFs
   Modules are then put in **import order** — each after everything it imports,
   ties by depth — and every list in the viewer uses it. Alphabetical order is
   the file system's and says nothing about the development: it opens on
-  `Ambient` only by luck of the letter A, and scatters the coverage table into
-  noise. In import order that table reads as a diagonal, the mechanization
-  advancing as the paper does. Which imports are internal is not assumed: the
+  `Ambient` only by luck of the letter A, and interleaves the layers, so
+  scrolling the index tells you nothing about what is built on what. In import
+  order the index reads as the development does, from the ambient state to the
+  interaction theorem. Which imports are internal is not assumed: the
   root prefix (`PQCPlus.`) is whatever prefix the imports that resolve agree
   on, so nothing here knows the package's name either.
 
@@ -180,17 +181,25 @@ the precondition.
   question asked before that one, and answers it on the page itself: how much
   of this paper has been mechanized, and which parts. A gap reads as a gap —
   an unmarked block between two marked ones — rather than as an absence from a
-  list. The marks are the only clickable one: a click opens that item's
+  list. This replaced a coverage table of every item × every module, which
+  answered the same question a page away from the thing it was about, and in a
+  grid whose cells the reader had to translate back into statements. The count
+  each rail row already carries says the rest. The marks are the only
+  clickable ones: a click opens that item's
   declaration on the right, so the paper becomes an index into the Lean
   sources. `\Cref` links stay on top of the overlay and still follow.
-- **Coverage** (`g`): every labelled item × every Lean module. Also lists the
-  items with no Lean counterpart at all.
+- **Clean** (`c`): the index, both header bars and the reference rows put away,
+  leaving the two documents and the marks on them. Apparatus is what you want
+  while deciding what to read and what is in the way once you are reading it.
+  The rail is hidden rather than removed, so `j`/`k` still walk the selection
+  with it off screen; `/` brings it back, since asking to filter is asking for
+  the index.
 - Both pages are whole documents scrolled, not extracts: the left is the
   compiled PDF (`+` `−` `fit` zoom, **with proof** extends the band over the
   proof that follows), the right is the `.lean` file with its line numbers. A
   declaration read without what surrounds it is a declaration read without its
   place in the module.
-- `/` filter · `j`/`k` move · `a` formalized · `g` coverage · citations are
+- `/` filter · `j`/`k` move · `a` formalized · `c` clean · citations are
   clickable in both directions, and so are the `\Cref` links inside the PDF
   itself · the URL hash deep-links an item.
 

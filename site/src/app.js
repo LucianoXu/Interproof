@@ -69,7 +69,7 @@ function esc(s) {
    one document, one module — so it keeps its own pair; both stay marked in
    the rail, and `sel` only says which of them was touched last. */
 var state = { mode: "paper", sel: null, q: "", proof: false, fdoc: null, ffile: null,
-              all: false, marked: [] };
+              all: false, marked: [], clean: false };
 
 var $ = function (s) { return document.querySelector(s); };
 var railBody, rhead, verso, vhead;
@@ -249,6 +249,22 @@ function toggleAll(on) {
   state.all = on === undefined ? !state.all : on;
   $("#allbtn").classList.toggle("on", state.all);
   PDFView.repaintMarks();
+}
+
+/* ---- clean ------------------------------------------------------------- */
+
+/* Everything the viewer says *about* the two documents — the index, the two
+   header bars, the reference rows — put away, leaving the documents and the
+   marks on them.  Apparatus is what you need while deciding what to read and
+   what is in the way once you are reading it.
+   The rail stays in the DOM, so `j`/`k` still walk the selection with it
+   hidden; the PDF is re-laid out because the pane it fits itself to just
+   changed width. */
+function toggleClean(on) {
+  state.clean = on === undefined ? !state.clean : on;
+  $("#app").classList.toggle("clean", state.clean);
+  $("#cleanbtn").classList.toggle("on", state.clean);
+  requestAnimationFrame(function () { PDFView.resize(); });
 }
 
 /* ---- reference rows ---------------------------------------------------- */
@@ -635,72 +651,6 @@ function wire(root) {
   });
 }
 
-/* ---- coverage ---------------------------------------------------------- */
-
-function buildCoverage() {
-  var files = LEAN.map(function (f) { return f.name; });
-  var rows = itemsOrdered();
-  var h = '<div class="inner"><h2>Correspondence coverage</h2>';
-  h += '<div class="sub">' + M.stats.links + " citations harvested from " + M.stats.lean_lines.toLocaleString() +
-       " lines of Lean across " + M.stats.lean_files + " modules · " +
-       M.stats.tex_items + " labelled items in the two documents · " +
-       M.stats.unresolved + " dangling references<br>" +
-       "each column is a Lean module, in import order</div>";
-  h += '<div class="covgrid"><div></div><div class="colhead">' +
-       files.map(function (f) { return "<span><b>" + esc(f) + "</b></span>"; }).join("") +
-       "</div>";
-  var curDoc = null;
-  rows.forEach(function (e) {
-    var key = e[0], it = e[1];
-    if (it.doc !== curDoc) {
-      curDoc = it.doc;
-      h += '<div class="rl" style="color:var(--amber);font-size:10px;letter-spacing:.12em;text-transform:uppercase">' +
-           esc(curDoc + " — " + DOC[curDoc].short) + "</div><div></div>";
-    }
-    var links = BY[key] || [];
-    var per = {}; links.forEach(function (l) { per[l.file] = (per[l.file] || 0) + 1; });
-    h += '<div class="rl' + (links.length ? "" : " no") + '" data-go2="' + key + '">' + esc(it.label) + "</div>";
-    h += '<div class="covbar">';
-    files.forEach(function (f) {
-      var c = per[f] || 0;
-      h += '<div class="cell' + (c ? (c > 2 ? " f" : " f lo") : "") + '" title="' + f + ": " + c + '"></div>';
-    });
-    h += '<div style="font-family:var(--mono);font-size:10px;color:var(--machine-dim);margin-left:10px">' +
-         (links.length || "") + "</div></div>";
-  });
-  h += "</div>";
-
-  var gaps = rows.filter(function (e) { return !(BY[e[0]] || []).length; });
-  h += '<div class="gap"><h3>' + gaps.length + " items with no Lean counterpart</h3><ul>";
-  gaps.forEach(function (e) {
-    h += '<li data-go2="' + e[0] + '"><span>' + e[1].doc + "</span>" + esc(e[1].label) +
-         '<span style="margin-left:auto">' + esc(e[1].title) + "</span></li>";
-  });
-  h += "</ul></div>";
-
-  h += '<div class="covlegend">' +
-    '<span><i style="background:var(--amber)"></i>3+ citations in that module</span>' +
-    '<span><i style="background:rgba(221,139,60,.42)"></i>1–2 citations</span>' +
-    '<span><i style="background:var(--machine-3)"></i>none</span></div>';
-  h += "</div>";
-  $("#cov").innerHTML = h;
-  $("#cov").querySelectorAll("[data-go2]").forEach(function (el) {
-    el.onclick = function () {
-      toggleCov(false);
-      if (state.mode !== "paper") { state.mode = "paper"; syncModes(); }
-      select(el.dataset.go2);
-    };
-  });
-}
-
-function toggleCov(on) {
-  var c = $("#cov");
-  var want = on === undefined ? !c.classList.contains("on") : on;
-  c.classList.toggle("on", want);
-  $("#covbtn").classList.toggle("on", want);
-  if (want && !c.dataset.built) { buildCoverage(); c.dataset.built = "1"; }
-}
-
 /* ---- modes ------------------------------------------------------------- */
 
 function syncModes() {
@@ -744,15 +694,13 @@ function boot() {
   }, allMarks);
 
   $("#stats").innerHTML =
-    '<div class="stat"><b>' + M.stats.tex_items + "</b>items</div>" +
-    '<div class="stat"><b>' + M.stats.lean_decls + "</b>lean decls</div>" +
     '<div class="stat acc"><b>' + M.stats.links + "</b>links</div>" +
     '<div class="stat"><b>' + M.stats.unresolved + "</b>dangling</div>";
 
   document.querySelectorAll(".modes button").forEach(function (b) {
     b.onclick = function () { setMode(b.dataset.mode); };
   });
-  $("#covbtn").onclick = function () { toggleCov(); };
+  $("#cleanbtn").onclick = function () { toggleClean(); };
   $("#allbtn").onclick = function () { toggleAll(); };
   $("#search").oninput = function (e) { state.q = e.target.value; buildRail(); };
 
@@ -761,10 +709,11 @@ function boot() {
       if (e.key === "Escape") { e.target.value = ""; state.q = ""; buildRail(); e.target.blur(); }
       return;
     }
-    if (e.key === "/") { e.preventDefault(); $("#search").focus(); }
+    // asking to filter is asking for the rail back
+    if (e.key === "/") { e.preventDefault(); toggleClean(false); $("#search").focus(); }
     else if (e.key === "a") toggleAll();
-    else if (e.key === "g") toggleCov();
-    else if (e.key === "Escape") toggleCov(false);
+    else if (e.key === "c") toggleClean();
+    else if (e.key === "Escape") toggleClean(false);
     else if (e.key === "j" || e.key === "k") {
       var all = [].slice.call(railBody.querySelectorAll(".itm"));
       var i = all.findIndex(function (el) { return el.classList.contains("sel"); });

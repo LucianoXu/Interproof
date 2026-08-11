@@ -298,6 +298,8 @@ window.PDFView = {
     layout();
   },
   refit: function () { fit = true; layout(); },
+  /* the pane changed width without the window doing so */
+  resize: layout,
   top: function () { scroller.scrollTo({ top: 0 }); },
   pages: function () { return cur && docs[cur] ? docs[cur].viewports.length : 0; },
   resolve: resolve,

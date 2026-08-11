@@ -104,6 +104,19 @@ header {
 .hbtn:hover { color: var(--paper-hi); border-color: var(--machine-dim); }
 .hbtn.on { color: var(--machine); background: var(--amber); border-color: var(--amber); }
 
+/* --- clean ------------------------------------------------------------- */
+
+/* The two documents and the marks on them; everything the viewer says *about*
+   them put away.  The rail is hidden rather than removed, so `j`/`k` still
+   walk the selection with the index off screen. */
+/* two columns, not a zero-width first one: a hidden grid item stops being
+   placed, and the pages would slide into the column the rail vacated */
+#app.clean { grid-template-columns: minmax(0, 1fr) minmax(0, 1.04fr); }
+#app.clean .rail,
+#app.clean .rhead,
+#app.clean .vhead { display: none; }
+#app.clean .brand { width: auto; }
+
 /* ==========================================================================
    rail
    ========================================================================== */
@@ -397,66 +410,6 @@ header {
   letter-spacing: 0; font-size: 10.5px;
 }
 .vhead .chip:hover { background: rgba(221,139,60,.14); }
-
-/* ==========================================================================
-   coverage overlay
-   ========================================================================== */
-
-.cov {
-  position: fixed; inset: var(--h) 0 0 0; background: var(--machine);
-  z-index: 40; overflow-y: auto; display: none;
-}
-.cov.on { display: block; animation: fade .25s; }
-@keyframes fade { from { opacity: 0 } }
-.cov .inner { padding: 44px 56px 90px; max-width: 1180px; }
-.cov h2 {
-  font-family: var(--serif); font-weight: 300; font-size: 30px; color: var(--paper-hi);
-  margin: 0 0 6px;
-}
-.cov .sub {
-  font-family: var(--mono); font-size: 11px; color: var(--machine-dim);
-  letter-spacing: .06em; margin-bottom: 34px; line-height: 1.7;
-}
-
-.covgrid { display: grid; grid-template-columns: 210px 1fr; gap: 2px 18px; align-items: center; }
-.covgrid .rl {
-  font-family: var(--mono); font-size: 11px; color: var(--machine-fg);
-  text-align: right; padding: 3px 0; cursor: pointer;
-}
-.covgrid .rl:hover { color: var(--amber); }
-.covgrid .rl.no { color: var(--machine-dim); }
-.colhead { display: flex; gap: 2px; align-items: flex-end; height: 96px; margin-bottom: 8px; }
-.colhead span {
-  width: 15px; display: flex; justify-content: center;
-}
-.colhead b {
-  font-family: var(--mono); font-size: 9.5px; font-weight: 400; letter-spacing: .08em;
-  color: var(--machine-dim); white-space: nowrap;
-  writing-mode: vertical-rl; transform: rotate(180deg);
-}
-.covbar { display: flex; gap: 2px; align-items: center; height: 15px; }
-.cell { width: 15px; height: 15px; background: var(--machine-3); }
-.cell.f { background: var(--amber); }
-.cell.f.lo { background: rgba(221,139,60,.42); }
-.covlegend {
-  font-family: var(--mono); font-size: 10px; color: var(--machine-dim);
-  margin: 30px 0 0; letter-spacing: .06em; display: flex; gap: 20px; flex-wrap: wrap;
-}
-.covlegend i { display: inline-block; width: 11px; height: 11px; margin-right: 6px; vertical-align: -1px; }
-
-.gap { margin-top: 44px; }
-.gap h3 {
-  font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--amber); margin: 0 0 12px;
-}
-.gap ul { list-style: none; margin: 0; padding: 0; }
-.gap li {
-  font-family: var(--mono); font-size: 11.5px; color: var(--machine-fg);
-  padding: 6px 0; border-bottom: 1px solid var(--machine-rule); cursor: pointer;
-  display: flex; gap: 12px;
-}
-.gap li:hover { color: var(--amber); }
-.gap li span { color: var(--machine-dim); }
 
 .kbd {
   font-family: var(--mono); font-size: 9.5px; border: 1px solid var(--machine-rule);
