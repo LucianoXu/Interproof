@@ -16,7 +16,8 @@
 [project]
 # Shown in the browser tab and the page header.  Defaults to the directory
 # name, which is almost never what you want.
-title = "Toy IMP — a paper, a note, and their Lean formalization"
+title = "Toy IMP"           # short: it is the browser tab, the page header,
+                           # and the name of the archive the reader downloads
 
 # Where the compiled PDFs and their .synctex.gz live.  Intermediate, not the
 # deliverable; it is in .gitignore.  Default: ".interproof/build".

@@ -20,7 +20,7 @@ walking up from the working directory, the way `git` does; `-c PATH` overrides.
 
 | key | default | what it is |
 |---|---|---|
-| `title` | the project root's directory name | shown in the page header and the browser tab |
+| `title` | the project root's directory name | the page header, the browser tab, and the name of the archive the reader downloads — so a short name, not a description |
 | `out` | `"site"` | where `interproof build` writes the folder |
 | `build_dir` | `".interproof/build"` | where the PDFs and SyncTeX data land |
 
