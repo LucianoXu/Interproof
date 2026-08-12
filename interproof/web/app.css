@@ -32,6 +32,55 @@
 
   --rail: 268px;
   --h: 46px;
+
+  /* --- how a control says it is one -------------------------------------
+     Everything a reader can click is drawn from these, and the three UI
+     variants below are almost entirely a matter of setting them differently.
+     A first-time reader missing the controls is a failure of exactly this
+     handful of values, not of where the controls are. */
+  --radius:      0px;                /* corners on buttons, chips, fields   */
+  --ctl-bg:      transparent;        /* a control at rest, in the header    */
+  --ctl-bd:      var(--machine-rule);
+  --ctl-fg:      var(--machine-dim);
+  --ctl-hover:   #22221d;            /* and under the pointer               */
+  --chip-bg:     transparent;        /* a chip at rest: on the paper side…  */
+  --chip-bg-m:   transparent;        /* …and on the machine side            */
+  --label-case:  uppercase;          /* the tone of a small label           */
+  --label-track: .09em;
+  --btn-label:   none;               /* the word beside a header icon       */
+  --lift:        none;               /* what a control does on hover        */
+}
+
+/* ==========================================================================
+   UI variants — TEMPORARY, for choosing one
+   ==========================================================================
+   Three readings of the same page, differing in how loudly a control
+   announces itself: Press (hairlines and letterpress, the original), Studio
+   (soft, filled, sentence case), Contrast (labelled, filled, unmissable).
+   Whichever is chosen, the other two and the picker come out. */
+
+:root[data-ui="studio"] {
+  --radius:      5px;
+  --ctl-bg:      #23231e;
+  --ctl-bd:      transparent;
+  --ctl-fg:      #a9a294;
+  --ctl-hover:   #33332b;
+  --chip-bg:     var(--paper-2);
+  --chip-bg-m:   #26261f;
+  --label-case:  none;
+  --label-track: .02em;
+  --lift:        translateY(-1px);
+}
+
+:root[data-ui="contrast"] {
+  --radius:      3px;
+  --ctl-bg:      #2b2a23;
+  --ctl-bd:      #4a483d;
+  --ctl-fg:      var(--paper-hi);
+  --ctl-hover:   var(--rust);
+  --chip-bg:     rgba(169,60,22,.10);
+  --chip-bg-m:   rgba(221,139,60,.13);
+  --btn-label:   inline;
 }
 
 * { box-sizing: border-box; }
@@ -75,8 +124,8 @@ header {
   color: var(--machine-fg);
   font-family: var(--mono);
   font-size: 11px;
-  letter-spacing: .09em;
-  text-transform: uppercase;
+  letter-spacing: var(--label-track);
+  text-transform: var(--label-case);
 }
 
 .brand {
@@ -96,16 +145,55 @@ header {
 
 .hspacer { flex: 1; }
 
+/* --- the header controls ------------------------------------------------
+   A square target with an icon in it, and the name in a tooltip: four icons
+   read as a set of controls where four words read as a line of prose.  The
+   name is still in the DOM — some variants show it — and always in the
+   tooltip, because an icon nobody can name is worse than a word. */
 .hbtn {
-  font: inherit; letter-spacing: .09em; text-transform: uppercase;
-  background: none; border: 1px solid var(--machine-rule); color: var(--machine-dim);
-  padding: 4px 10px; cursor: pointer; transition: .15s;
+  position: relative;
+  display: inline-flex; align-items: center; gap: 7px;
+  font: inherit; letter-spacing: var(--label-track); text-transform: var(--label-case);
+  background: var(--ctl-bg); border: 1px solid var(--ctl-bd); border-radius: var(--radius);
+  color: var(--ctl-fg);
+  padding: 0 8px; height: 26px; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s, transform .15s;
 }
-.hbtn:hover { color: var(--paper-hi); border-color: var(--machine-dim); }
+.hbtn .lbl { display: var(--btn-label); }
+.hbtn svg {
+  width: 16px; height: 16px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.4;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.hbtn svg .fill { fill: currentColor; stroke: none; }
+.hbtn:hover { color: var(--paper-hi); background: var(--ctl-hover); border-color: var(--machine-dim); transform: var(--lift); }
+.hbtn:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+/* a toggle that is on is not a hover state: it stays lit */
 .hbtn.on { color: var(--machine); background: var(--amber); border-color: var(--amber); }
+.hbtn.on:hover { background: var(--amber); color: var(--machine); }
 /* packing an archive takes seconds, and the button is where the reader is
    looking: it reports rather than a dialog appearing over the page */
-.hbtn:disabled { color: var(--machine-dim); border-color: var(--machine-rule); cursor: default; }
+.hbtn:disabled { color: var(--machine-dim); border-color: var(--ctl-bd); cursor: default; transform: none; }
+.hbtn.busy .lbl { display: inline; }
+
+/* --- what a control is called ------------------------------------------
+   On hover and on keyboard focus, so that finding out what something does
+   never costs a click. */
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 50;
+  width: max-content; max-width: 34ch;
+  padding: 6px 9px;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.45;
+  letter-spacing: .02em; text-transform: none; text-align: left;
+  color: var(--machine-fg); background: var(--machine-2);
+  border: 1px solid var(--machine-rule); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  opacity: 0; transform: translateY(-3px); pointer-events: none;
+  transition: opacity .12s ease, transform .12s ease;
+}
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after { opacity: 1; transform: none; }
 
 /* --- the live indicator ------------------------------------------------- */
 
@@ -164,15 +252,19 @@ header {
 
 .searchwrap { flex: none; border-bottom: 1px solid var(--rule); position: relative; }
 #search {
-  width: 100%; border: 0; background: transparent; padding: 10px 12px 10px 26px;
+  width: 100%; border: 0; background: transparent; padding: 10px 12px 10px 31px;
   font-family: var(--mono); font-size: 12px; color: var(--ink);
 }
 #search:focus { outline: none; background: var(--paper-hi); }
 #search::placeholder { color: var(--ink-faint); }
-.searchwrap::before {
-  content: "/"; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-  font-family: var(--mono); font-size: 12px; color: var(--rust);
+/* a field says what it is by looking like one; the glyph used to be a `/`,
+   which promised a keyboard shortcut that no longer exists */
+.searchwrap .mag {
+  position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+  width: 13px; height: 13px; pointer-events: none;
+  fill: none; stroke: var(--ink-faint); stroke-width: 1.4; stroke-linecap: round;
 }
+.searchwrap:focus-within .mag { stroke: var(--rust); }
 
 .railbody { flex: 1; min-height: 0; padding-bottom: 40px; }
 
@@ -205,9 +297,16 @@ header {
 .row.sel::before { background: var(--ink); width: 2px; }
 
 .tw { flex: none; width: 9px; align-self: stretch; position: relative; }
-/* on a row that opens a file the twisty is the only thing that folds, so it
-   takes a target bigger than the triangle it draws */
-.nd[data-key] > .tw::after { content: ""; position: absolute; inset: -4px -4px -4px -6px; }
+/* On a row that opens a file the twisty is the only thing that folds, so it
+   takes a target bigger than the triangle it draws — and lights up on its
+   own, which is how the row teaches that it does two things. */
+.nd > .tw::before { z-index: 1; }
+.nd[data-key] > .tw::after {
+  content: ""; position: absolute; inset: -4px -4px -4px -6px;
+  border-radius: var(--radius); transition: background .12s;
+}
+.nd[data-key] > .tw:hover::after { background: var(--paper-2); }
+.nd[data-key] > .tw:hover::before { border-left-color: var(--rust); }
 .nd > .tw::before {
   content: ""; position: absolute; left: 0; top: 5px;
   border: 3.5px solid transparent; border-left-color: var(--ink-faint);
@@ -229,7 +328,7 @@ header {
 /* --- the nodes ---------------------------------------------------------- */
 
 .nd > .nm {
-  font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase;
+  font-size: 9.5px; letter-spacing: .13em; text-transform: var(--label-case);
   color: var(--ink-faint);
 }
 /* a directory and a file are named, not titled: their own case, kept */
@@ -330,8 +429,12 @@ header {
 }
 .covmark:hover { background: rgba(77,107,58,.3); box-shadow: inset 2px 0 0 var(--verd); }
 
-/* \Cref links the document itself carries (hyperref documents only) */
-.plink { position: absolute; cursor: pointer; border-bottom: 1px solid transparent; z-index: 3; }
+/* \Cref links the document itself carries (hyperref documents only).  Faint
+   at rest rather than invisible: a link nobody knows is there is not a link. */
+.plink {
+  position: absolute; cursor: pointer; z-index: 3;
+  border-bottom: 1px solid rgba(169,60,22,.35);
+}
 .plink:hover { background: rgba(169,60,22,.14); border-bottom-color: var(--rust); }
 
 /* --- the bar above it -------------------------------------------------- */
@@ -363,27 +466,41 @@ header {
   letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
   margin-right: 2px; min-width: 52px;      /* the labels line up down the rows */
 }
-.chip.dead { color: var(--ink-faint); border-color: var(--paper-2); cursor: default; }
-.chip.dead:hover { background: none; }
-.chip.more { border-style: dashed; }
+/* A chip is a name you can go to.  It is drawn as a target at rest and not
+   only under the pointer: the whole complaint about this page was that its
+   apparatus looked like typography. */
 .chip {
   font-family: var(--mono); font-size: 10.5px; color: var(--rust); cursor: pointer;
-  border: 1px solid rgba(169,60,22,.28); border-radius: 2px; padding: 1px 5px;
+  background: var(--chip-bg);
+  border: 1px solid rgba(169,60,22,.28); border-radius: var(--radius); padding: 1px 6px;
+  transition: background .12s, border-color .12s, color .12s;
 }
-.chip:hover { background: rgba(169,60,22,.12); }
+.chip:hover { background: rgba(169,60,22,.16); border-color: var(--rust); }
+.chip:focus-visible { outline: 2px solid var(--rust); outline-offset: 1px; }
 .chip.on { color: var(--ink-soft); border-color: var(--rule); background: var(--paper-2); }
+/* named, and not offered: a section is a real reference with no page of its
+   own, so it is drawn as text rather than as a target */
+.chip.dead {
+  color: var(--ink-faint); border-color: transparent; background: none;
+  cursor: default; padding-left: 0; padding-right: 0;
+}
+.chip.dead:hover { background: none; border-color: transparent; }
+.chip.more { border-style: dashed; }
 
 .rtools { margin-left: auto; display: flex; gap: 5px; }
 .rbtn {
   font-family: var(--mono); font-size: 10px; letter-spacing: .06em;
-  color: var(--ink-soft); background: transparent; cursor: pointer;
-  border: 1px solid var(--rule); border-radius: 2px; padding: 2px 7px;
+  color: var(--ink-soft); background: var(--paper-2); cursor: pointer;
+  border: 1px solid var(--rule); border-radius: var(--radius); padding: 2px 8px;
+  transition: background .12s, border-color .12s, color .12s;
 }
-.rbtn:hover { border-color: var(--ink-faint); color: var(--ink); }
+.rbtn:hover { border-color: var(--ink-faint); color: var(--ink); background: var(--paper-hi); }
+.rbtn:focus-visible { outline: 2px solid var(--rust); outline-offset: 1px; }
 .rbtn.on { background: var(--rust); border-color: var(--rust); color: var(--paper-hi); }
 
 .crumb {
-  font-family: var(--mono); font-size: 10px; letter-spacing: .11em; text-transform: uppercase;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .11em;
+  text-transform: var(--label-case);
   color: var(--ink-faint);
   display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
 }
@@ -409,7 +526,8 @@ header {
 
 .vhead {
   flex: none; padding: 11px 24px; border-bottom: 1px solid var(--machine-rule);
-  font-family: var(--mono); font-size: 10px; letter-spacing: .13em; text-transform: uppercase;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .13em;
+  text-transform: var(--label-case);
   color: var(--machine-dim);
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
 }
@@ -453,9 +571,9 @@ header {
 .lsrc .num { color: #b58cc0; }
 .lsrc .srr { background: #6b1a1a; color: #ffd7d7; padding: 0 3px; }
 .lsrc .citec {
-  color: var(--amber); border-bottom: 1px dotted rgba(221,139,60,.5); cursor: pointer;
+  color: var(--amber); border-bottom: 1px solid rgba(221,139,60,.45); cursor: pointer;
 }
-.lsrc .citec:hover { background: rgba(221,139,60,.16); }
+.lsrc .citec:hover { background: rgba(221,139,60,.18); border-bottom-color: var(--amber); }
 
 /* --- what is being shown, above it ------------------------------------- */
 
@@ -484,6 +602,7 @@ header {
 .vhead .chip {
   color: var(--amber); border-color: rgba(221,139,60,.3); text-transform: none;
   letter-spacing: 0; font-size: 10.5px;
+  background: var(--chip-bg-m);      /* the machine side has its own ground */
 }
 .vhead .chip:hover { background: rgba(221,139,60,.14); }
 
@@ -496,6 +615,27 @@ header {
   #app { grid-template-columns: 220px minmax(0,1fr) minmax(0,1fr); }
   .pad { padding: 30px 26px 100px; }
 }
+
+/* --- TEMPORARY: the style picker --------------------------------------- */
+.uipick {
+  position: fixed; right: 14px; bottom: 14px; z-index: 55;
+  display: flex; align-items: center; gap: 4px;
+  padding: 5px 6px;
+  background: var(--machine-2); border: 1px solid var(--machine-rule);
+  box-shadow: 0 8px 26px rgba(0,0,0,.45);
+  font-family: var(--mono); font-size: 10px;
+}
+.uipick i {
+  font-style: normal; color: var(--machine-dim); letter-spacing: .12em;
+  padding: 0 5px 0 3px;
+}
+.uipick button {
+  font: inherit; letter-spacing: .06em;
+  background: none; border: 1px solid var(--machine-rule); border-radius: var(--radius);
+  color: var(--machine-fg); padding: 3px 9px; cursor: pointer;
+}
+.uipick button:hover { border-color: var(--machine-dim); background: #22221d; }
+.uipick button.on { background: var(--amber); border-color: var(--amber); color: var(--machine); }
 
 /* --- the help sheet ----------------------------------------------------
    Set as a page rather than as a tooltip: what it has to explain — that the
@@ -559,3 +699,31 @@ header {
   padding: 3px 9px; cursor: pointer;
 }
 .hclose:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+/* ==========================================================================
+   UI variants — the few things tokens cannot say
+   ========================================================================== */
+
+/* Studio: the same page with the letterpress mannerisms turned down.  Rows
+   breathe, rules soften, and nothing shouts — the controls are found by
+   being filled rather than by being loud. */
+:root[data-ui="studio"] .row { padding-top: 5px; padding-bottom: 5px; }
+:root[data-ui="studio"] .nd.root { border-top-color: var(--paper-2); }
+:root[data-ui="studio"] .nd > .nm { font-size: 10px; letter-spacing: .04em; }
+:root[data-ui="studio"] .itm .nm { font-size: 11.5px; }
+:root[data-ui="studio"] .row:hover { background: #efe7d8; }
+:root[data-ui="studio"] .brand b { letter-spacing: .06em; }
+:root[data-ui="studio"] .hbtn { height: 28px; padding: 0 9px; }
+:root[data-ui="studio"] .searchwrap { border-bottom-color: var(--paper-2); }
+
+/* Contrast: nothing is left to be noticed.  The header controls carry their
+   names, every chip is filled, and the row under the pointer takes the
+   accent rather than a shade of the paper. */
+:root[data-ui="contrast"] .hbar { gap: 14px; }
+:root[data-ui="contrast"] .hbtn { padding: 0 10px; font-weight: 600; }
+:root[data-ui="contrast"] .row:hover { background: rgba(169,60,22,.09); }
+:root[data-ui="contrast"] .itm.has .kd { font-weight: 600; }
+:root[data-ui="contrast"] .chip { border-color: rgba(169,60,22,.45); }
+:root[data-ui="contrast"] .vhead .chip { border-color: rgba(221,139,60,.5); }
+:root[data-ui="contrast"] .rbtn { border-color: var(--ink-faint); }
+:root[data-ui="contrast"] .nd.root { background: var(--paper-2); }

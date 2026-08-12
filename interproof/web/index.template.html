@@ -20,17 +20,44 @@
       <div id="stats" style="display:flex;gap:20px"></div>
       <span class="live" id="live"></span>
       <div class="hspacer"></div>
-      <span class="kbd">/</span><span style="color:var(--machine-rule)">search</span>
-      <span class="kbd">j k</span><span style="color:var(--machine-rule)">move</span>
-      <button class="hbtn" id="helpbtn">Help &nbsp;?</button>
-      <button class="hbtn" id="allbtn">Formalized &nbsp;a</button>
-      <button class="hbtn" id="cleanbtn">Clean &nbsp;c</button>
-      <button class="hbtn" id="dlbtn">Download</button>
+      <!-- Four things the page can do, as four targets.  The label is the
+           tooltip rather than the button, because a row of words reads as a
+           sentence and a row of icons reads as a set of controls — and what a
+           first-time reader was missing is that there were controls at all. -->
+      <button class="hbtn" id="allbtn" aria-label="Formalized" data-tip="Formalized — mark every statement with a Lean counterpart (a)">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2.5" y="1.5" width="11" height="13" rx="1"/>
+          <path class="fill" d="M4.5 5h7v1.6h-7zM4.5 9.4h4.6V11H4.5z"/>
+          <path d="M4.5 7.8h7"/>
+        </svg><span class="lbl">Formalized</span>
+      </button>
+      <button class="hbtn" id="cleanbtn" aria-label="Clean" data-tip="Clean — put the apparatus away, leaving the two documents (c)">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M6.2 2H2v4.2M9.8 2H14v4.2M6.2 14H2V9.8M9.8 14H14V9.8"/>
+        </svg><span class="lbl">Clean</span>
+      </button>
+      <button class="hbtn" id="dlbtn" aria-label="Download" data-tip="Download — this page, the PDFs and the sources, as one archive">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 2v7.5M5 6.8L8 9.8l3-3M2.5 11.5v2h11v-2"/>
+        </svg><span class="lbl">Download</span>
+      </button>
+      <button class="hbtn" id="helpbtn" aria-label="Help" data-tip="What am I looking at? (?)">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="6.2"/>
+          <path d="M6.1 6.1a1.9 1.9 0 1 1 1.9 1.9v1.4"/>
+          <path class="fill" d="M8 11.1a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7z"/>
+        </svg><span class="lbl">Help</span>
+      </button>
     </div>
   </header>
 
   <nav class="rail">
-    <div class="searchwrap"><input id="search" placeholder="filter" spellcheck="false"></div>
+    <div class="searchwrap">
+      <svg class="mag" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.3"/><path d="M10.2 10.2L14 14"/>
+      </svg>
+      <input id="search" placeholder="Filter the index" spellcheck="false">
+    </div>
     <div class="railbody scroll" id="railbody"></div>
   </nav>
 
@@ -43,6 +70,16 @@
     <div class="vhead" id="vhead"></div>
     <div class="scroll" id="leanscroll"><div id="leanpane"></div></div>
   </section>
+
+  <!-- ===== TEMPORARY: the style switcher, for choosing between UI variants.
+       It is scaffolding for one review and comes out with the losing
+       variants; nothing else in the page reads it. ===================== -->
+  <div class="uipick" id="uipick">
+    <i>UI</i>
+    <button data-ui="press">Press</button>
+    <button data-ui="studio">Studio</button>
+    <button data-ui="contrast">Contrast</button>
+  </div>
 
   <div class="note" id="note"></div>
   <div class="sheet" id="help" hidden><div class="sheetbody" id="helpbody"></div></div>

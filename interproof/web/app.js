@@ -413,21 +413,6 @@ function reveal(key) {
   (PARENT[key] || []).forEach(function (id) { foldMap()[id] = false; });
 }
 
-/* one level of the branch the selection is in.  Closing takes the innermost
-   node that is open, opening takes the outermost that is not — so the two are
-   each other's undo, and a held key walks the branch out and back. */
-function foldStep(close) {
-  var path = (PARENT[state.sel] || []).slice();
-  if (close) path.reverse();
-  for (var i = 0; i < path.length; i++) {
-    var nd = NODES[path[i]];
-    if (!nd || isOpen(nd) !== close) continue;
-    foldMap()[nd.id] = close;
-    buildRail(false);
-    return;
-  }
-}
-
 /* ---- rail -------------------------------------------------------------- */
 
 function delay(ctr) { return "animation-delay:" + Math.min(ctr.n++ * 8, 260) + "ms"; }
@@ -1142,14 +1127,19 @@ window.Interproof = bridge;
 function wireDownload() {
   var btn = $("#dlbtn");
   if (!btn || !window.Download) return;
-  var label = btn.textContent;
-  function done() { btn.disabled = false; btn.textContent = label; }
+  /* The button reports into its own label rather than replacing its contents:
+     it is an icon now, and an icon that turns into the word "Packing" and
+     back is a button that vanished while you were watching it. */
+  var lbl = btn.querySelector(".lbl"), label = lbl ? lbl.textContent : "";
+  function say(t) { if (lbl) lbl.textContent = t; }
+  function done() { btn.disabled = false; btn.classList.remove("busy"); say(label); }
   btn.onclick = function () {
     if (btn.disabled || !M) return;
     btn.disabled = true;
-    btn.textContent = "Packing";
+    btn.classList.add("busy");
+    say("Packing");
     Download.build(bridge, function (n, total) {
-      btn.textContent = "Packing " + Math.round(n / total * 100) + "%";
+      say("Packing " + Math.round(n / total * 100) + "%");
     }).then(function (blob) {
       var url = URL.createObjectURL(blob);
       var a = document.createElement("a");
@@ -1234,10 +1224,20 @@ function helpHTML() {
        "sources: a comment that names a statement of the paper is what puts " +
        "the two on screen together.</p>";
 
+  h += "<h3>what you can click</h3><ul>" +
+       "<li>A row of the index on the left — a statement, a declaration, or a " +
+       "<b>document or module row</b>, which opens that file whole.</li>" +
+       "<li>The <b>triangle</b> on a document or module row folds it instead " +
+       "of opening it.</li>" +
+       "<li>Every <b>name in a box</b> in the two bars above the pages: they " +
+       "are the references, and each one goes there.</li>" +
+       "<li>A <b>citation inside the Lean source</b> — the underlined labels " +
+       "in the comments — and a <b>\\Cref link inside the PDF</b>.</li>" +
+       "<li>Every <b>green mark</b> in the paper while <b>Formalized</b> is " +
+       "on, which is that statement's way into the formalization.</li>" +
+       "</ul>";
+
   h += "<h3>keys</h3><table class='hkeys'>" +
-       row("/", "filter the index — also brings it back when it is hidden") +
-       row("j k", "move the selection, down and up the rows on screen") +
-       row("h l", "fold the branch the selection is in, and unfold it") +
        row("a", "<b>Formalized</b>: mark every statement with a counterpart, at once") +
        row("c", "<b>Clean</b>: put the apparatus away, leaving the two documents") +
        row("?", "this page") +
@@ -1320,6 +1320,26 @@ function toggleHelp(on) {
   if (c) c.onclick = function () { toggleHelp(false); };
 }
 
+/* TEMPORARY: the style picker.  It writes `data-ui` on the root element and
+   remembers the choice; every variant is CSS and nothing else reads it. */
+function wirePicker() {
+  var box = $("#uipick");
+  if (!box) return;
+  function set(ui) {
+    document.documentElement.setAttribute("data-ui", ui);
+    try { localStorage.setItem("interproof-ui", ui); } catch (e) { /* private mode */ }
+    box.querySelectorAll("button").forEach(function (b) {
+      b.classList.toggle("on", b.dataset.ui === ui);
+    });
+  }
+  box.querySelectorAll("button").forEach(function (b) {
+    b.onclick = function () { set(b.dataset.ui); };
+  });
+  var was = null;
+  try { was = localStorage.getItem("interproof-ui"); } catch (e) { /* private mode */ }
+  set(was || "press");
+}
+
 function boot() {
   railBody = $("#railbody"); rhead = $("#rhead"); vhead = $("#vhead");
   verso = $("#leanpane"); noteEl = $("#note"); liveEl = $("#live");
@@ -1341,35 +1361,13 @@ function boot() {
       if (e.key === "Escape") { e.target.value = ""; filter(""); e.target.blur(); }
       return;
     }
-    // asking to filter is asking for the rail back
-    if (e.key === "/") { e.preventDefault(); toggleClean(false); $("#search").focus(); }
-    else if (e.key === "?") toggleHelp();
+    if (e.key === "?") toggleHelp();
     else if (e.key === "a") toggleAll();
     else if (e.key === "c") toggleClean();
     // one escape, one thing put away: the sheet is on top, so it goes first
     else if (e.key === "Escape") {
       if (!$("#help").hidden) toggleHelp(false); else toggleClean(false);
     }
-    /* j and k walk every row on screen that can be opened — statements,
-       declarations, and the document and module rows themselves — across both
-       indexes rather than within one of them: the selection crosses from one
-       index into the next, and the key it lands on is what says which index
-       that is.  With the selected row folded away there is nowhere to step
-       from, so a step starts at the end it came from. */
-    else if (e.key === "j" || e.key === "k") {
-      var down = e.key === "j";
-      var all = [].slice.call(railBody.querySelectorAll("[data-key]"));
-      var i = all.findIndex(function (el) { return el.dataset.key === state.sel; });
-      if (i < 0) i = down ? -1 : all.length;
-      var nx = all[Math.max(0, Math.min(all.length - 1, i + (down ? 1 : -1)))];
-      if (nx) select(nx.dataset.key);
-    }
-    /* folding from the keyboard, on the branch the selection is in: h closes
-       the innermost one still open, l opens the outermost one still closed.
-       Neither moves the selection — folding an index is a statement about the
-       index, and the two pages go on showing what was picked. */
-    else if (e.key === "h" || e.key === "ArrowLeft") foldStep(true);
-    else if (e.key === "l" || e.key === "ArrowRight") foldStep(false);
   });
 
   /* deep links stay live: changing only the hash does not reload the page */
@@ -1380,6 +1378,7 @@ function boot() {
   });
 
   wireDownload();
+  wirePicker();
   if (BOOT.mode === "live") { liveEl.style.display = "flex"; liveMark("wait", "connecting"); }
 
   /* Nothing above this point needed the manifest, and nothing below runs
