@@ -33,12 +33,11 @@
      interleave without breaking the grid a `pre` is read on. */
   --mono:  "IBM Plex Mono", "JuliaMono", "SF Mono", Menlo, Consolas, monospace;
 
-  /* TEMPORARY — the interface type, for one review.  What a *label* is set
-     in: the header, the branches of the index, the breadcrumbs, the row
-     labels, and the titles of statements, which are prose.  Identifiers —
-     declaration names, file names, `def:state` — stay monospaced whatever
-     this says, because they are code. */
-  --ui: var(--mono);
+  /* What a *label* is set in: the header, the branches of the index, the
+     breadcrumbs, the row labels, and the titles of statements, which are
+     prose somebody wrote.  Identifiers — declaration names, file names,
+     `def:state` — stay monospaced, because they are code. */
+  --ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   --rail: 268px;
   --h: 46px;
@@ -594,35 +593,10 @@ header {
   .pad { padding: 30px 26px 100px; }
 }
 
-/* --- TEMPORARY: the interface-type candidates, and their picker --------- */
-:root[data-font="inter"]    { --ui: "Inter", system-ui, sans-serif; }
-:root[data-font="plexsans"] { --ui: "IBM Plex Sans", system-ui, sans-serif; }
-/* a sans at the same size reads larger than a mono; the labels are set small
-   enough that the difference matters */
-:root[data-font="inter"] .nd > .nm,
-:root[data-font="plexsans"] .nd > .nm { font-size: 10px; letter-spacing: .1em; }
-:root[data-font="inter"] .itm.txt .nm,
-:root[data-font="plexsans"] .itm.txt .nm { font-size: 12.5px; }
-
-.uipick {
-  position: fixed; right: 14px; bottom: 14px; z-index: 55;
-  display: flex; align-items: center; gap: 4px;
-  padding: 5px 6px;
-  background: var(--machine-2); border: 1px solid var(--machine-rule);
-  box-shadow: 0 8px 26px rgba(0,0,0,.45);
-  font-family: var(--mono); font-size: 10px;
-}
-.uipick i {
-  font-style: normal; color: var(--machine-dim); letter-spacing: .12em;
-  padding: 0 5px 0 3px;
-}
-.uipick button {
-  font: inherit; letter-spacing: .06em;
-  background: none; border: 1px solid var(--machine-rule); border-radius: var(--radius);
-  color: var(--machine-fg); padding: 3px 9px; cursor: pointer;
-}
-.uipick button:hover { border-color: var(--machine-dim); background: #22221d; }
-.uipick button.on { background: var(--amber); border-color: var(--amber); color: var(--machine); }
+/* a sans at the same size reads larger than a mono, and these labels are set
+   small enough that the difference has to be paid back */
+.nd > .nm { font-size: 10px; letter-spacing: .1em; }
+.itm.txt .nm { font-size: 12.5px; }
 
 /* --- the help sheet ----------------------------------------------------
    Set as a page rather than as a tooltip: what it has to explain — that the

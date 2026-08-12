@@ -1321,25 +1321,6 @@ function toggleHelp(on) {
   if (c) c.onclick = function () { toggleHelp(false); };
 }
 
-/* TEMPORARY: the interface-type picker, for one review. */
-function wirePicker() {
-  var box = $("#uipick");
-  if (!box) return;
-  function set(f) {
-    document.documentElement.setAttribute("data-font", f);
-    try { localStorage.setItem("interproof-font", f); } catch (e) { /* private mode */ }
-    box.querySelectorAll("button").forEach(function (b) {
-      b.classList.toggle("on", b.dataset.font === f);
-    });
-  }
-  box.querySelectorAll("button").forEach(function (b) {
-    b.onclick = function () { set(b.dataset.font); };
-  });
-  var was = null;
-  try { was = localStorage.getItem("interproof-font"); } catch (e) { /* private mode */ }
-  set(was || "mono");
-}
-
 function boot() {
   railBody = $("#railbody"); rhead = $("#rhead"); vhead = $("#vhead");
   verso = $("#leanpane"); noteEl = $("#note"); liveEl = $("#live");
@@ -1378,7 +1359,6 @@ function boot() {
   });
 
   wireDownload();
-  wirePicker();
   if (BOOT.mode === "live") { liveEl.style.display = "flex"; liveMark("wait", "connecting"); }
 
   /* Nothing above this point needed the manifest, and nothing below runs
