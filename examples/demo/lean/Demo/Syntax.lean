@@ -17,16 +17,18 @@ namespace Demo
 
 /-- Arithmetic expressions: paper:def:aexp. -/
 inductive AExp where
-  /-- paper:def:aexp:lit, evaluated by paper:def:aeval:arith:lit. -/
+  /-- paper:def:aexp:lit. -/
   | lit : Nat → AExp
-  /-- paper:def:aexp:var, evaluated by paper:def:aeval:arith:var. -/
+  /-- paper:def:aexp:var. -/
   | var : Var → AExp
-  /-- paper:def:aexp:add, evaluated by paper:def:aeval:arith:add. -/
+  /-- paper:def:aexp:add. -/
   | add : AExp → AExp → AExp
   deriving Repr
 
-/-- The free variables of an expression, read off its syntax.  Listed rather
-than a set, so that no order structure has to be imported for it. -/
+/-- The free variables of an expression, read off its syntax:
+paper:def:aexp:fv, the one sentence of that definition that is not the
+grammar.  Listed rather than a set, so that no order structure has to be
+imported for it. -/
 def AExp.fv : AExp → List Var
   | .lit _ => []
   | .var x => [x]
@@ -74,7 +76,12 @@ The core language of the paper has no call construct at all
 here because the note's frame discipline is what the rest of the development
 uses, and a declaration is what that discipline is about. -/
 structure Proc where
+  /-- The formal parameters — the `x⃗` of note, def:proc:params.  The note
+  carries no anchor by that name, so the path peels to `def:proc` with
+  `params` recorded: it links today, and sharpens by itself the day the note
+  is annotated, with no edit here. -/
   params : List Var
+  /-- The body — the `c` of note, def:proc:body.  Peels the same way. -/
   body : Cmd
 
 end Demo

@@ -34,13 +34,15 @@ state change in the language is built from this one operation. -/
 def Store.update (s : Store) (x : Var) (n : Nat) : Store :=
   fun y => if y = x then n else s y
 
-/-- Reading back what was just written. -/
+/-- Reading back what was just written — the first branch of the note's
+update, note, def:update:eq. -/
 @[simp]
 theorem update_same (s : Store) (x : Var) (n : Nat) :
     Store.update s x n x = n := by
   simp [Store.update]
 
-/-- Reading past a write to another variable. -/
+/-- Reading past a write to another variable — the other branch,
+note, def:update:ne. -/
 theorem update_ne (s : Store) {x y : Var} (n : Nat) (h : y ≠ x) :
     Store.update s x n y = s y := by
   simp [Store.update, h]
@@ -82,12 +84,13 @@ theorem update_comm (s : Store) {x y : Var} (h : x ≠ y) (m n : Nat) :
 
 /-! ## Frames -/
 
-/-- Agreement on a frame, written `∼_W`: def:frame.
+/-- Agreement on a frame, written `∼_W`: def:frame, and to the point the
+agreement clause of it, def:frame:agree.
 
-That citation names a label and nothing else — no document marker appears
-anywhere before it.  It resolves because only one of the two documents holds
-that label, which is the usual case and the reason most citations need no
-ceremony. -/
+Both citations name a label and nothing else — no document marker appears
+anywhere before either.  They resolve because only one of the two documents
+holds that label, which is the usual case and the reason most citations need
+no ceremony. -/
 def AgreeOn (W : List Var) (s t : Store) : Prop :=
   ∀ x ∈ W, s x = t x
 

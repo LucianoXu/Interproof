@@ -245,9 +245,11 @@ came back **both ways**, which is the useful outcome:
   Step 2 cannot touch it.
 
 So the demo carries one of each, on purpose: `paper:def:aeval:arith` resolves
-to a real anchor with a tight rectangle, and `paper:def:cmd:while` peels to
-`def:cmd` because the paper has nowhere finer to point — the graceful
-degradation the peeling rule exists for.
+to a real anchor with a tight rectangle, and the note's `def:proc:params` /
+`def:proc:body` — cited by the two fields of `Proc` — peel to `def:proc`
+because the note carries no anchors by those names: the graceful degradation
+the peeling rule exists for. (`paper:def:cmd:while` used to be the peeling
+case, until step 3 gave the grammar a measured anchor per production.)
 
 **Step 3 then took the case step 2 could not.** `def:aeval:arith`'s three
 equations are `\qquad`-separated inside one `\[…\]`: one typeset line, one
@@ -256,9 +258,14 @@ SyncTeX box for all three. Quoted anchors measure them separately —
     lit  x 169.59 .. 212.50      var  x 237.32 .. 296.59      add  x 321.41 .. 452.25
 
 all on the same baseline, in source order, not overlapping. Reading the PDF's
-text back out of each rectangle returns exactly its own equation. Each is cited
-by the matching constructor of `AExp`, so three constructors of an inductive
-face three equations of one printed line.
+text back out of each rectangle returns exactly its own equation. Each is
+cited by `AExp.eval` — the definition whose match arms *are* those equations.
+A match arm carries no name of its own, so the citations sit together on the
+code that computes the equations, never on the syntax constructors it merely
+pattern-matches: an equation about evaluation is formalized by the evaluator.
+The boolean half does the same one environment over — `def:aeval:bool:tt` …
+`:and` are four quoted anchors inside one `align*`, each span crossing the
+`&` of its row, and `BExp.eval` cites all four.
 
 The cheap fix for a grammar like `def:cmd` is not always step 3, either:
 rewriting the display as an `align` with one production per row makes it

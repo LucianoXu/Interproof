@@ -171,7 +171,7 @@ What it costs:
 - **size.** The overlay is the one part of a manifest that grows with the size
   of the *formalization* rather than with the size of the correspondence.
   `build` reports what it added, measured rather than estimated — 125 KB for
-  the 1 845 tokens and 74 proof states of the tracked example. The states are
+  the 1 871 tokens and 74 proof states of the tracked example. The states are
   9 KB of that: they are recorded per *tactic*, and a development has an order
   of magnitude fewer tactics than tokens.
 

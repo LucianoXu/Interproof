@@ -15,15 +15,23 @@ that shows every paper item as green is a view with nothing to say.
 namespace Demo
 
 /-- Evaluation of arithmetic expressions: clause 1 of the paper's definition,
-paper:def:aeval:arith.  Total, because an expression has no side effect and cannot
-fail. -/
+paper:def:aeval:arith — and equation by equation, paper:def:aeval:arith:lit,
+paper:def:aeval:arith:var, paper:def:aeval:arith:add.  The equations are this
+definition's match arms, and a match arm carries no name of its own, so all
+three are cited here, on the code that computes them, rather than on the
+syntax constructors they merely pattern-match.  Total, because an expression
+has no side effect and cannot fail. -/
 def AExp.eval : AExp → Store → Nat
   | .lit n, _ => n
   | .var x, s => s x
   | .add a b, s => a.eval s + b.eval s
 
-/-- Evaluation of boolean expressions — the other half, paper:def:aeval:bool.
-The trailing dot there is sentence punctuation and not part of the clause. -/
+/-- Evaluation of boolean expressions — the other half, paper:def:aeval:bool,
+equation by equation: paper:def:aeval:bool:tt, paper:def:aeval:bool:le,
+paper:def:aeval:bool:not, paper:def:aeval:bool:and.  The paper sets those four
+equations two to a printed line, so each rectangle comes from the marked build
+rather than from SyncTeX.  The trailing dot there is sentence punctuation and
+not part of the clause. -/
 def BExp.eval : BExp → Store → Bool
   | .tt, _ => true
   | .le a b, s => decide (a.eval s ≤ b.eval s)

@@ -23,9 +23,13 @@ Evaluation is defined by recursion on syntax, in two clauses.
 \item For the boolean expressions of \Cref{def:bexp}, writing
 $\mathbb{B} = \{\mathsf{tt}, \mathsf{ff}\}$,
 \begin{align*}
+% @interproof anchor def:aeval:bool:tt = "\sem{\kw{true}}\sigma &= \mathsf{tt}"
   \sem{\kw{true}}\sigma &= \mathsf{tt}, &
+% @interproof anchor def:aeval:bool:le = "\sem{a_1 \le a_2}\sigma &= (\sem{a_1}\sigma \le \sem{a_2}\sigma)"
   \sem{a_1 \le a_2}\sigma &= (\sem{a_1}\sigma \le \sem{a_2}\sigma), \\
+% @interproof anchor def:aeval:bool:not = "\sem{\lnot b}\sigma &= \lnot \sem{b}\sigma"
   \sem{\lnot b}\sigma &= \lnot \sem{b}\sigma, &
+% @interproof anchor def:aeval:bool:and = "\sem{b_1 \land b_2}\sigma &= \sem{b_1}\sigma \land \sem{b_2}\sigma"
   \sem{b_1 \land b_2}\sigma &= \sem{b_1}\sigma \land \sem{b_2}\sigma .
 \end{align*}
 \end{enumerate}

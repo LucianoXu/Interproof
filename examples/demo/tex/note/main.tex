@@ -46,7 +46,9 @@ $\upd{\sigma}{x}{n}$ is
 \[
   \upd{\sigma}{x}{n}(y) \;=\;
   \begin{cases}
+% @interproof anchor def:update:eq = "n & \text{if } y = x"
     n & \text{if } y = x, \\
+% @interproof anchor def:update:ne = "\sigma(y) & \text{otherwise.}"
     \sigma(y) & \text{otherwise.}
   \end{cases}
 \]
@@ -82,6 +84,7 @@ disagree.
 \begin{definition}[frame lifting]
 \label{def:frame}
 Let $W \subseteq \Var$ be finite --- a \emph{frame}. Two states \emph{agree on
+% @interproof anchor def:frame:agree = "\agree{W}{\sigma}{\tau}"
 $W$}, written $\agree{W}{\sigma}{\tau}$, when $\sigma(y) = \tau(y)$ for every
 $y \in W$. A statement about states \emph{lifts to the frame $W$} when it is
 invariant under agreement on $W$.

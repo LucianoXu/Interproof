@@ -93,12 +93,12 @@ warnings on a stock TeX Live, both producing a `.synctex.gz`.
 |---|---|---|
 | 15 | A module is keyed by its **path**, not its file name | `Demo/Logic/Rules` and `Demo/Logic/Soundness` live in a subdirectory |
 | 16 | **Import order is not alphabetical** | alphabetical: `Logic/Rules, Logic/Soundness, Semantics, Store, Syntax`. Import order: `Store, Syntax, Semantics, Logic/Rules, Logic/Soundness`. The bottom module sorts fourth and the top module sorts first; an implementation that fell back to alphabetical order would be caught by every entry |
-| 17 | A citation is **a label in a comment**, optionally with a document marker | `paper:def:cmd`, `note, def:update`. Both spellings of the marker work, and all 44 citations take this form, because it is the only form there is |
+| 17 | A citation is **a label in a comment**, optionally with a document marker | `paper:def:cmd`, `note, def:update`. Both spellings of the marker work, and all 81 citations take this form, because it is the only form there is |
 | 18 | A **label is the only thing read** — a title is not a citation | the docstring of `AgreeOn` in `Demo/Store.lean` says *Agreement on a frame* and the note's `def:frame` is titled *frame lifting*; neither phrase links anything. Only the written `def:frame` does |
 | 19 | An **anchor** names a part of a statement, and the paper still compiles | `20-semantics.tex` carries `% @interproof anchor def:aeval:arith` and `…:bool` above the two `\item`s of `def:aeval`. They are LaTeX comments: `latexmk` never sees them. `Demo/Semantics.lean` cites them for `AExp.eval` and `BExp.eval`, and a trailing dot is still sentence punctuation |
 | 19a | An anchor **bands less than its statement** | `def:aeval` runs across a page break — two marks, 18.4% of page 1 and 20.3% of page 2. `def:aeval:arith` is one mark of 5.0%, `def:aeval:bool` one of 10.5%. If an anchor ever bands as much as its parent, the geometry has stopped saying anything |
-| 20 | A citation in the `/-- … -/` docstring **above** a declaration belongs to that declaration | 31 of the 44 |
-| 21 | A citation in `/-! … -/` module prose belongs to **no declaration**, but to the block that cites | 13 of the 44, in every module header and in the two closing notes of `Demo/Logic/Rules` and `Demo/Store` |
+| 20 | A citation in the `/-- … -/` docstring **above** a declaration belongs to that declaration | 68 of the 81 |
+| 21 | A citation in `/-! … -/` module prose belongs to **no declaration**, but to the block that cites | 13 of the 81, in every module header and in the two closing notes of `Demo/Logic/Rules` and `Demo/Store` |
 | 22 | One label cited from **two distant blocks** of one file is two places, not one region | `paper:def:triple` in `Demo/Logic/Rules.lean`: the module header at line 7, and again at line 98, ninety lines below. The lines in between cite nothing, and a band spanning both would be a lie |
 | 23 | A `/-! ## … -/` section header **immediately after a declaration** is not a docstring | `Demo/Store.lean` puts one directly under `update_ne`, and `Demo/Logic/Rules.lean` one directly under `assign_rule`. Both close the way a docstring closes; reading either as one sends the search for the opening delimiter back into the previous declaration and starts its band a whole declaration early |
 | 24 | Structural keywords break a declaration's extent | `namespace`, `end`, `section … end`, `variable`, `open … in`, and `import` all occur between declarations |
@@ -107,7 +107,9 @@ warnings on a stock TeX Live, both producing a `.synctex.gz`.
 | 27 | Declarations reference each other **by use in code** | `soundness` uses all five rule lemmas; `derivable_holds` uses `soundness`; 161 use edges in all, members included |
 | 28 | **Constructors and fields are declarations**, with their own spans | `Cmd` yields `Cmd.skip` … `Cmd.whileDo`, `Proc` yields `Proc.params` and `Proc.body`; 26 members in all. `deriving Repr` closes the body and belongs to no constructor, so the last member's band does not run a line long |
 | 29 | A citation on a member belongs to the **member**, not to the parent | `Demo/Syntax.lean` cites `paper:def:cmd:while` in the docstring above `| whileDo`. Innermost wins: the band is that constructor, not the whole datatype. The docstring is *indented*, which is also what keeps it from ending the `inductive` — a column-zero `/--` is a boundary and an indented one is not |
-| 30 | A **label path** peels to the statement it names | that same `paper:def:cmd:while` resolves to `def:cmd` with `while` recorded as `sub`, because the paper carries no anchor by that name yet. It links now and sharpens later, with no edit to the Lean |
+| 30 | A **label path** peels to the statement it names | `Proc.params` and `Proc.body` cite `note, def:proc:params` and `def:proc:body`; the note carries no anchors by those names, so both resolve to `def:proc` with the tail recorded as `sub`. They link now and sharpen later, with no edit to the Lean |
+| 31 | A quoted anchor may cross an alignment `&` | the four boolean equations of `def:aeval:bool` sit two to a printed row inside one `align*`; each `% @interproof anchor …:tt` … `:and` quote spans its row's `&`, and the marked build measures four separate rectangles, two per baseline. All four are cited by `BExp.eval` — an equation about evaluation belongs to the evaluator, not to the syntax it pattern-matches |
+| 32 | A **single-file document** may carry quoted spans in its own `main.tex` | the note's `def:frame:agree`, `def:update:eq` and `def:update:ne`. The marked build injects its macros onto the `\documentclass` line of the very file it just wrapped spans in — a sentinel that asked "is `\ipmark` in this file" instead of "is it *defined*" skipped the injection and lost every coordinate |
 
 ## The gaps, which are also deliberate
 
@@ -132,18 +134,18 @@ Produced by the repository's own parsers over these sources.
 
 | | |
 |---|---|
-| LaTeX items | **53** — paper 42, note 11 |
-| … statements (`definition`/`lemma`/…) | 28, plus 17 anchors naming parts of them |
+| LaTeX items | **73** — paper 59, note 14 |
+| … statements (`definition`/`lemma`/…) | 28, plus 37 anchors naming parts of them |
 | … sections and subsections | 8 |
 | … with a `proof` environment | 13 |
 | `\Cref` edges between items | 35 |
 | **statements with a Lean counterpart** | **26 / 28** |
-| items located in the PDF | 60 — 28 statements and 17 anchors, 15 of those measured to the point |
+| items located in the PDF | 65 — 28 statements and 37 anchors, 35 of those measured to the point |
 | Lean modules | 5 |
 | Lean declarations | 57 — 31 written, 26 constructors and fields read out of them (1 with `sorry`) |
-| Lean lines | 427 |
-| **citations Lean → LaTeX** | **58**, every one of them by label |
-| distinct items cited | 45 |
+| Lean lines | 468 |
+| **citations Lean → LaTeX** | **81**, every one of them by label |
+| distinct items cited | 65 — every anchor the papers carry has a Lean counterpart |
 | use edges between declarations | 161 |
 | **dangling citations** | **0** |
 
