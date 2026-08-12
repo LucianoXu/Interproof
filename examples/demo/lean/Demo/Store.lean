@@ -82,13 +82,12 @@ theorem update_comm (s : Store) {x y : Var} (h : x ≠ y) (m n : Nat) :
 
 /-! ## Frames -/
 
-/-- Agreement on a frame, written `∼_W`: Definition (frame lifting).
+/-- Agreement on a frame, written `∼_W`: def:frame.
 
-That citation names a kind and a title and nothing else — no document marker
-appears anywhere before it.  It resolves because only one of the two documents
-holds a `definition` by that title.  Spelled `Lemma (frame lifting)` it would
-resolve to nothing at all, and that disagreement is the reason a citation by
-title has to name the kind. -/
+That citation names a label and nothing else — no document marker appears
+anywhere before it.  It resolves because only one of the two documents holds
+that label, which is the usual case and the reason most citations need no
+ceremony. -/
 def AgreeOn (W : List Var) (s t : Store) : Prop :=
   ∀ x ∈ W, s x = t x
 

@@ -160,25 +160,3 @@ label_prefixes = [
 # proof citing a lemma is what a dependency is.  Only a proof STARTING
 # IMMEDIATELY after \end{theorem} counts as that theorem's.
 proof_environment = "proof"
-
-# How a citation that names an item by its TITLE spells the item's kind, and
-# which environment each spelling means.
-#
-#     /-- ... note, Def. procedure declaration ... -/
-#     /-- ... Definition (frame lifting) ... -/
-#
-# both resolve, because "Def." and "Definition" are listed under `definition`
-# and the note has \begin{definition}[procedure declaration] and
-# \begin{definition}[frame lifting].
-#
-# The kind has to AGREE: `Lemma (frame lifting)` resolves to nothing, on
-# purpose.  Without that check every title citation would be a guess, and the
-# disagreement it catches is a real one — it is usually a definition that has
-# since become a lemma.
-[grammar.kind_words]
-definition  = ["Definition", "Def."]
-lemma       = ["Lemma", "Lem."]
-theorem     = ["Theorem", "Thm."]
-proposition = ["Proposition", "Prop."]
-corollary   = ["Corollary", "Cor."]
-remark      = ["Remark", "Rem."]

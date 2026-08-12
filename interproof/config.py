@@ -33,18 +33,6 @@ DEFAULT_LABEL_PREFIXES = [
     "thm", "lem", "def", "prop", "cor", "rem", "sec", "sub", "app",
     "fig", "tab", "eq",
 ]
-# How a citation that names an item by *title* spells its kind, and which
-# environment each spelling means.  A title citation must agree on the kind —
-# `Lemma (locality)` is not `def:local` — so this table is what makes the
-# agreement checkable.
-DEFAULT_KIND_WORDS = {
-    "definition": ["Definition", "Def."],
-    "lemma": ["Lemma", "Lem."],
-    "theorem": ["Theorem", "Thm."],
-    "proposition": ["Proposition", "Prop."],
-    "corollary": ["Corollary", "Cor."],
-    "remark": ["Remark", "Rem."],
-}
 DEFAULT_LATEXMK = ["latexmk", "-pdf", "-synctex=1", "-interaction=nonstopmode"]
 
 
@@ -62,8 +50,6 @@ class Grammar:
 
     environments: list[str] = field(default_factory=lambda: list(DEFAULT_ENVIRONMENTS))
     label_prefixes: list[str] = field(default_factory=lambda: list(DEFAULT_LABEL_PREFIXES))
-    kind_words: dict[str, list[str]] = field(
-        default_factory=lambda: {k: list(v) for k, v in DEFAULT_KIND_WORDS.items()})
     proof_environment: str = "proof"
 
     @property
@@ -75,22 +61,6 @@ class Grammar:
     @property
     def env_re(self) -> str:
         return "|".join(map(re.escape, self.environments))
-
-    @property
-    def kind_word_re(self) -> str:
-        """The alternation of every spelling of every kind, longest first, so
-        `Definition` is not consumed as `Def` with a stray `inition`."""
-        words = [w for ws in self.kind_words.values() for w in ws]
-        return "|".join(sorted(map(re.escape, words), key=len, reverse=True))
-
-    @property
-    def env_of_word(self) -> dict[str, str]:
-        """Every spelling, folded, back to the environment it names."""
-        out = {}
-        for env, words in self.kind_words.items():
-            for w in words:
-                out[w.lower().rstrip(".")] = env
-        return out
 
 
 @dataclass(frozen=True)
@@ -300,14 +270,9 @@ def _abs(root: Path, p: str) -> Path:
 
 
 def _grammar(g: dict, path: Path) -> Grammar:
-    kw = g.get("kind_words")
-    if kw is not None and not isinstance(kw, dict):
-        raise ConfigError(f"{path}: grammar.kind_words must be a table of "
-                          f"environment = [\"spelling\", ...]")
     return Grammar(
         environments=list(g.get("environments", DEFAULT_ENVIRONMENTS)),
         label_prefixes=list(g.get("label_prefixes", DEFAULT_LABEL_PREFIXES)),
-        kind_words={k: list(v) for k, v in (kw or DEFAULT_KIND_WORDS).items()},
         proof_environment=g.get("proof_environment", "proof"),
     )
 

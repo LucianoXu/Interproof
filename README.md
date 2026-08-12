@@ -18,7 +18,7 @@ fidelity is exact by construction.
 
 > **The precondition.** Interproof does not invent the correspondence; it reads
 > one you already wrote. A formalization whose comments cite the paper —
-> `P3:lem:one-sided`, `note, Def. procedure declaration` — already holds it.
+> `P3:lem:one-sided`, `note, def:proc-decl` — already holds it.
 > Point this at sources that cite nothing and the manifest comes back empty.
 > The protocol is one page: **[docs/CITING.md](docs/CITING.md)**.
 

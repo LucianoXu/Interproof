@@ -4,13 +4,13 @@ import Demo.Logic.Rules
 # Soundness
 
 The syntactic proof system of paper:def:derivable and the theorem that it is
-sound for the semantic triple: Theorem (soundness), which the paper labels
-paper:thm:soundness.
+sound for the semantic triple, paper:thm:soundness.
 
-That one item is cited twice in the two lines above, once by title and kind
-and once by label.  Both are citations of the *same* paper item, and the
-viewer should offer the reader two places in this module to stand, not two
-different theorems.
+Both of those items are cited again further down, on the declaration that is
+each of them.  The two citations of one item are not a duplicate: this header
+is a place in the module to stand, and so is the declaration, and the viewer
+offers the reader both.  What the header claims is the header — not the whole
+module.
 -/
 
 namespace Demo

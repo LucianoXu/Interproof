@@ -9,17 +9,15 @@ paper. Point Interproof at a formalization whose comments never name a paper
 and the correspondence comes back empty; that is not a failure of the tool, it
 is the precondition. This document is what you hand to whoever writes the Lean.
 
-The rule in one line: **name the paper's statement, in a comment, next to the
-declaration that is it.**
+The rule in one line: **name the paper's statement, by its `\label`, in a
+comment, next to the declaration that is it.**
 
 ---
 
-## The three forms of a citation
+## What a citation is
 
-All three are read, and all three count. Use whichever reads best in the
-sentence you were going to write anyway — that is the point of having three.
-
-### 1. By label — the canonical form
+A citation is a `\label` written in a comment. That is the whole form, and it
+is the only one.
 
 ```lean
 /-- The one-sided step lemma.  See P3:lem:one-sided. -/
@@ -44,27 +42,23 @@ A citation may name a *clause* of a numbered statement: `def:wf.3` is clause 3
 of `def:wf`, and resolves to `def:wf` with the clause recorded. A trailing dot
 that is really sentence punctuation is not mistaken for one.
 
-### 2. By kind and title
+### Why only the label
 
-```lean
-/-- note, Def. procedure declaration -/
-/-- This is Definition (frame lifting). -/
-```
+An earlier version also read a statement named by its **kind and title** —
+`Def. procedure declaration`, `Definition (frame lifting)` — matched against
+the optional argument of the environment. It read well, and it was removed.
 
-These name the item by the title in its optional argument —
-`\begin{definition}[frame lifting]` — rather than by its label. They are just
-as much a citation, and a formalization written by someone reading the paper
-tends to produce them naturally.
+A title is prose. It recurs in sentences that are discussing the subject rather
+than citing the statement, it collides across documents, and a one-word title
+(`[soundness]`, `[locality]`) matches almost anything. The failure was not that
+it missed citations; it was that it *found* them, in the wrong places, and gave
+them the wrong extent — so the band in the reader covered text that had nothing
+to do with the declaration. A correspondence that is wrong in a way the reader
+cannot see is worse than one that is merely incomplete.
 
-**A title citation must agree on the kind.** `Lemma (locality)` will not
-resolve to `def:local`, even though the title matches. This is deliberate: the
-kind is the only redundancy available to catch a title that means something
-else, and a citation that silently attaches a lemma to a definition is worse
-than one that does not resolve.
-
-Which words spell which kind is `[grammar.kind_words]`; the default covers
-`Definition`/`Def.`, `Lemma`/`Lem.`, `Theorem`/`Thm.`, `Proposition`/`Prop.`,
-`Corollary`/`Cor.`, `Remark`/`Rem.`
+A `\label` does not have that problem, because it is an identifier the author
+deliberately made one. If a statement is worth citing from the formalization,
+it is worth giving a label.
 
 ---
 
@@ -112,7 +106,7 @@ not a citation of a paper; those are harvested separately and shown as the
 ### In the docstring above a declaration
 
 ```lean
-/-- Frame lifting.  note, Definition (frame lifting). -/
+/-- Frame lifting.  note, def:frame. -/
 def lift (f : Frame) : … := …
 ```
 

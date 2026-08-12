@@ -1234,9 +1234,9 @@ function start(key) {
    a generic help text would leave the one question a newcomer actually has,
    "what am I looking at here", answered somewhere they cannot reach. */
 
-function sample(via) {
+function sample() {
   for (var i = 0; i < LINKS.length; i++) {
-    if (LINKS[i].via === via && LINKS[i].context) return LINKS[i];
+    if (LINKS[i].context) return LINKS[i];
   }
   return null;
 }
@@ -1332,17 +1332,17 @@ function helpHTML() {
        "this reader exists to show.</li></ul>";
 
   h += "<h3>how the link is made</h3>" +
-       "<p>A comment in the formal sources names a statement of the paper, by " +
-       "label or by title. Both forms count, and both are read from this " +
-       "project's own sources:</p>" +
-       helpCitation(sample("label")) + helpCitation(sample("title")) +
+       "<p>A comment in the formal sources names a statement of the paper by " +
+       "its <code>\\label</code>. That is the whole protocol, and this is one " +
+       "of them, read from this project's own sources:</p>" +
+       helpCitation(sample()) +
        "<p>Nothing is annotated in the paper, and nothing is verified: a " +
        "citation says a declaration <i>claims</i> to be a statement. The two " +
        "texts are put side by side so you can check that in a second.</p>";
 
   h += "<h3>this run</h3><table class='hkeys'>" +
-       row(s.links + "", "citations, " + s.links_by_title + " of them by title, " +
-           "reaching " + s.linked_items + " distinct statements") +
+       row(s.links + "", "citations, reaching " + s.linked_items +
+           " distinct statements") +
        row(s.tex_items + "", "statements in " + DOCS.length + " document" +
            (DOCS.length === 1 ? "" : "s") + ", " + s.located + " placed on a page") +
        row(s.lean_decls + "", "declarations over " + s.lean_lines.toLocaleString() +

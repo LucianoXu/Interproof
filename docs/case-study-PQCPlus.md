@@ -102,12 +102,9 @@ text**:
   root prefix (`PQCPlus.`) is whatever prefix the imports that resolve agree
   on, so nothing here knows the package's name either.
 
-  A citation takes three forms in these sources, and all three count: the
-  canonical `note, def:proc-decl`, and the two that name the item by **title** —
-  `note, Def. procedure declaration` and `Definition (frame lifting)`. Title
-  matches must agree on the environment kind, so `Lemma (locality)` does not
-  resolve to `def:local`. A citation in the `/-- … -/` docstring above a
-  declaration belongs to that declaration, not to the module.
+  A citation is a `\label` in a comment — `note, def:proc-decl` — and that is
+  the only form. A citation in the `/-- … -/` docstring above a declaration
+  belongs to that declaration, not to the module.
 
   Which is also the citation's **extent**, and the right pane bands it. Two
   rules, both learned by looking at bands that were wrong. Whether a
@@ -227,17 +224,28 @@ it folds; picking a row is what says which of the two you are reading in.
 
 ## What the run says about PQCPlus
 
+> **These numbers predate the removal of title citations** and were measured
+> when both forms were read. They are kept because the paragraph below them is
+> what the measurement was for; the coverage figures are the part that has
+> moved, and re-measuring needs the PQCPlus material, which this repository
+> does not carry.
+
 134 citations (14 of them by title), 0 dangling, 906 Lean declarations over
 18,413 lines in 14 modules; all 46 labelled statements located in the PDFs.
 Within the sides: 54 cross-references between paper items, 4,472 name edges
 between declarations.
 20 of 28 P3 statements and 14 of 18 note statements have a Lean counterpart.
 
-Reading only canonical `kind:label` citations had put the note at 8 of 18. The
-six recovered — `def:proc-decl → ProcDef`, `def:cq-statements → Stmt`,
-`def:adv-decl`, `def:instantiation`, `def:adv-call`, `def:local` — are the core
-syntax and semantics definitions, and they were never uncited; they were cited
-in a form nothing was reading.
+Six of those note statements — `def:proc-decl → ProcDef`, `def:cq-statements →
+Stmt`, `def:adv-decl`, `def:instantiation`, `def:adv-call`, `def:local` — were
+reached *only* by a title citation, which put the note at 8 of 18 without it.
+They are the core syntax and semantics definitions, and they were never
+uncited; they were cited in a form nothing was reading, and are now cited in a
+form nothing reads again. **This is the work the change leaves behind in
+PQCPlus:** those six docstrings need the label written into them, and until
+they have it `interproof check` will report the note back at 8 of 18. That is
+the trade — a citation you have to write, against a band the reader can
+trust.
 
 What is left uncovered is not noise. On the note side `def:cq-semantics` and
 `def:proc-call` are *described* in `Semantics.lean`'s module docstring, formula

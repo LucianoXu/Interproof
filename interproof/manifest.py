@@ -30,8 +30,7 @@ from . import SCHEMA, __version__
 from .config import Config, Document
 from .lean import Citations, declaration_uses, import_order
 from .lean import parse_file as parse_lean_file
-from .tex import (TexItem, attach_cited_by, parse_all as parse_tex_all, strip_comments,
-                  titles_of)
+from .tex import TexItem, attach_cited_by, parse_all as parse_tex_all, strip_comments
 
 # What of a LaTeX source tree is text the artifact can carry verbatim.  Anything
 # else that the build reads — figures, embedded PDFs — is an asset, carried as
@@ -66,14 +65,13 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False,
 
     located = attach_pdf_rects(cfg, tex_items, quiet=quiet)
     tex_refs = attach_cited_by(tex_items, cfg.documents)
-    titles = titles_of(tex_items, cfg.grammar)
 
     cites = Citations.of(cfg)
     lean_files, all_refs = [], []
     for f in cfg.lean_files():
         rel = f.relative_to(cfg.lean_root).as_posix()
         name = rel[:-len(".lean")]
-        decls, mdoc, refs = parse_lean_file(f, name, titles, cites)
+        decls, mdoc, refs = parse_lean_file(f, name, cites)
         text = f.read_text(encoding="utf-8", errors="replace")
         lean_files.append({
             "name": name,
@@ -139,7 +137,6 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False,
             "tex_refs": tex_refs,          # \Cref edges between paper items
             "decl_refs": decl_refs,        # name edges between declarations
             "links": len(links),
-            "links_by_title": sum(1 for l in links if l.get("via") == "title"),
             "linked_items": len(by_item),
             "unresolved": len(unresolved),
             "located": located,
@@ -345,6 +342,17 @@ def configuration_warnings(cfg: Config, items: dict[str, TexItem],
     statements teaches you nothing until much later.
     """
     out: list[str] = []
+
+    # `kind_words` configured a citation form that no longer exists: naming an
+    # item by kind and title rather than by label.  A configuration still
+    # carrying it describes a build that will not happen, and the symptom is
+    # the quiet one — those citations simply stop resolving.
+    if re.search(r"^\s*(\[grammar\.kind_words\]|kind_words\s*=)", cfg.text, re.M):
+        out.append("[grammar.kind_words] is no longer read: a citation names "
+                   "its statement by label, and only by label.  Delete the "
+                   "table, and give a \\label{} to anything that was cited by "
+                   "title.")
+
     for d in cfg.documents:
         found = d.source_files()
 
@@ -635,8 +643,8 @@ def report(manifest: dict, *, out: Path | None = None) -> None:
     print(f"tex items      {s['tex_items']}  ({per})")
     print(f"lean           {s['lean_files']} files, {s['lean_decls']} decls, "
           f"{s['lean_lines']} lines")
-    print(f"links          {s['links']} citations -> {s['linked_items']} distinct items"
-          f"  ({s['links_by_title']} cited by title)")
+    print(f"links          {s['links']} citations -> {s['linked_items']} "
+          f"distinct items")
     print(f"references     {s['tex_refs']} between paper items, "
           f"{s['decl_refs']} between declarations")
     print(f"located        {s['located']} items placed in the PDFs by synctex")

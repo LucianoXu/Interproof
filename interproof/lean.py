@@ -63,21 +63,14 @@ class Citations:
     label_re: re.Pattern[str]
     marker_re: re.Pattern[str] | None
     marker_of: dict[str, str]
-    title_cite: str                      # a %s-template taking the escaped title
-    env_of_word: dict[str, str]
-    environments: tuple[str, ...]
 
     @classmethod
     def of(cls, cfg: Config) -> "Citations":
-        g = cfg.grammar
         markers = [d for d in cfg.documents if d.markers]
         return cls(
-            label_re=g.label_re,
+            label_re=cfg.grammar.label_re,
             marker_re=cfg.marker_re if markers else None,
             marker_of=cfg.marker_of,
-            title_cite=r"\b(" + g.kind_word_re + r")\s*\(?\s*(%s)\s*\)?",
-            env_of_word=g.env_of_word,
-            environments=tuple(g.environments),
         )
 
 
@@ -217,15 +210,13 @@ def signature_of(code: str) -> str:
 def parse_file(
     path: Path,
     name: str,
-    titles: dict[str, list[tuple[str, str, str]]],
     cites: Citations,
 ) -> tuple[list[LeanDecl], str, list[dict]]:
     """Parse one Lean module.
 
     `name` is how the module is referred to everywhere downstream — its path
     under the formal root, extension dropped, so two subdirectories may hold
-    the same file name.  `titles` maps an item title to the `(kind, doc, label)`
-    triples that carry it, for citations that name an item by title.
+    the same file name.
     """
     text = path.read_text(encoding="utf-8", errors="replace")
     lines = text.split("\n")
@@ -329,7 +320,7 @@ def parse_file(
         ))
 
     # harvest references from comment text only
-    def mkref(start: int, stop: int, label: str, via: str) -> dict:
+    def mkref(start: int, stop: int, label: str) -> dict:
         lno = line_of(start)
         # which document? nearest marker before the citation
         doc_hint = ""
@@ -347,40 +338,22 @@ def parse_file(
                 break
         blk = block_of(start)
         return {"label": label, "line": lno, "doc_hint": doc_hint, "decl": owner,
-                "via": via, "file": name,
+                "file": name,
                 # the prose block doing the citing, for when no declaration owns it
                 "block_from": blk[0], "block_to": blk[1],
                 "context": text[max(0, start - 220):stop + 220].replace("\n", " ").strip()}
 
+    # The label is the only citation form, and deliberately so.  Naming an item
+    # by its title instead — `Definition (frame lifting)` — was read here once,
+    # and it was a mistake: a title is prose, it recurs in prose that is not
+    # citing anything, and the extent it produced was wrong often enough that
+    # the reader could not be trusted.  A label is an identifier the author
+    # chose to be one, which is the whole reason it can carry this.
     refs: list[dict] = []
-    seen: set[tuple[int, str]] = set()            # (line, label), first form wins
     for m in cites.label_re.finditer(text):
         if not in_comment[m.start()]:
             continue
-        r = mkref(m.start(), m.end(), f"{m.group(1)}:{m.group(2)}", "label")
-        seen.add((r["line"], r["label"]))
-        refs.append(r)
-
-    # A citation may name its item by *title* — "Def. procedure declaration",
-    # "Definition (frame lifting)" — and that is just as much a citation.
-    # Reading only the canonical form leaves declarations that plainly state
-    # their counterpart looking uncovered.
-    for title, cands in titles.items():
-        for m in re.finditer(cites.title_cite % re.escape(title), text, re.I):
-            if not in_comment[m.start()]:
-                continue
-            kind = cites.env_of_word.get(m.group(1).lower().rstrip("."))
-            hit = [c for c in cands if c[0] == kind]   # "Lemma (locality)" is not def:local
-            if not hit:
-                continue
-            r = mkref(m.start(), m.end(), "", "title")
-            if len(hit) > 1 and r["doc_hint"]:        # same title in two documents
-                hit = [c for c in hit if c[1] == r["doc_hint"]] or hit
-            for _, doc, label in hit:
-                if (r["line"], label) in seen:
-                    continue
-                seen.add((r["line"], label))
-                refs.append({**r, "label": label, "doc_hint": doc})
+        refs.append(mkref(m.start(), m.end(), f"{m.group(1)}:{m.group(2)}"))
     return decls, module_doc, refs
 
 

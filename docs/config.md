@@ -205,14 +205,6 @@ environments   = ["theorem", "lemma", "definition", "proposition", "corollary",
 label_prefixes = ["thm", "lem", "def", "prop", "cor", "rem", "sec", "sub",
                   "app", "fig", "tab", "eq"]
 proof_environment = "proof"
-
-[grammar.kind_words]
-definition = ["Definition", "Def."]
-lemma      = ["Lemma", "Lem."]
-theorem    = ["Theorem", "Thm."]
-proposition = ["Proposition", "Prop."]
-corollary  = ["Corollary", "Cor."]
-remark     = ["Remark", "Rem."]
 ```
 
 - **`environments`** — which `\begin{…}` blocks are statements. An environment
@@ -223,11 +215,11 @@ remark     = ["Remark", "Rem."]
 - **`proof_environment`** — the environment that, when it immediately follows a
   statement, is treated as that statement's proof. It gets its own rectangle,
   which is what the **with proof** button extends the band over.
-- **`[grammar.kind_words]`** — how a citation that names an item by *title*
-  spells its kind. A title citation must agree on the kind, so
-  `Lemma (locality)` never resolves to `def:local`; this table is what makes
-  that agreement checkable. Adding a spelling here is how you support
-  `Satz`/`Théorème`.
+
+`[grammar.kind_words]` used to configure a second citation form, naming a
+statement by its kind and title. That form was removed — a title is prose, and
+it matched prose that was citing nothing — so the table is no longer read, and
+a configuration still carrying it is warned about at build time.
 
 ---
 

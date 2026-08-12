@@ -110,10 +110,25 @@ class ManifestTests(unittest.TestCase):
         self.assertGreater(s["tex_refs"], 0, "no \\Cref edges between statements")
         self.assertGreater(s["decl_refs"], 0, "no name edges between declarations")
 
-    def test_all_three_citation_forms_are_exercised(self):
-        vias = {l["via"] for l in self.man["links"]}
-        self.assertIn("label", vias)
-        self.assertIn("title", vias, "the example must cite something by title")
+    def test_only_a_label_is_a_citation(self):
+        """A title is prose, and prose does not cite.
+
+        Naming an item by kind and title — `Definition (frame lifting)` — was
+        read as a citation once.  It matched sentences that were citing
+        nothing, and the extent it produced was wrong often enough that the
+        reader could not be trusted; this pins the removal.
+        """
+        from interproof.lean import Citations, parse_file
+
+        cites = Citations.of(self.cfg)
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "M.lean"
+            p.write_text("/-- Definition (frame lifting), and Lemma (locality). -/\n"
+                         "def a : Nat := 0\n"
+                         "/-- Agreement on a frame, def:frame in the note. -/\n"
+                         "def b : Nat := 0\n", encoding="utf-8")
+            _, _, refs = parse_file(p, "M", cites)
+        self.assertEqual([r["label"] for r in refs], ["def:frame"])
 
     def test_module_and_declaration_citations_both_occur(self):
         owners = {l["decl"] is None for l in self.man["links"]}

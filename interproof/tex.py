@@ -87,8 +87,9 @@ def strip_comments(tex: str) -> str:
 def clean_title(t: str) -> str:
     """An environment's optional title, as a reader would say it aloud.
 
-    Titles are matched against citations written in prose (`Definition (frame
-    lifting)`), so the markup a title carries has to come off first.
+    The title is what the viewer's index calls the item, so the markup it
+    carries in the source has to come off first — a row reading
+    `\\emph{frame} lifting` is a row nobody can scan.
     """
     t = re.sub(r"\\rn\{([^}]*)\}", r"\1", t)
     t = re.sub(r"\\(emph|textit|textbf|texttt|textsf|kw|mathsf)\{([^}]*)\}", r"\2", t)
@@ -227,18 +228,3 @@ def attach_cited_by(items: dict[str, TexItem], docs: list[Document]) -> int:
                 items[hit].cited_by.append(key)
                 edges += 1
     return edges
-
-
-def titles_of(items: dict[str, TexItem], grammar: Grammar
-              ) -> dict[str, list[tuple[str, str, str]]]:
-    """Title -> the `(kind, doc, label)` triples carrying it.
-
-    A citation may name an item by title rather than by label, and then the
-    title is all there is to resolve against.  The kind travels with it because
-    a title match must agree on the kind: `Lemma (locality)` is not `def:local`.
-    """
-    out: dict[str, list[tuple[str, str, str]]] = {}
-    for it in items.values():
-        if it.title and it.kind in grammar.environments:
-            out.setdefault(it.title, []).append((it.kind, it.doc, it.label))
-    return out

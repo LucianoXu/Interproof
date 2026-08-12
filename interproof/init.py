@@ -317,14 +317,6 @@ def render(root: Path, docs: list[dict], lean_root: str) -> str:
         '#                   "fact", "assumption"]',
         '# label_prefixes = ["thm", "lem", "def", "prop", "cor", "rem", "sec",',
         '#                   "sub", "app", "fig", "tab", "eq"]',
-        "#",
-        "# How a citation that names an item by title spells its kind.  A title",
-        "# citation has to agree on the kind, so `Lemma (locality)` never resolves",
-        "# to `def:local`.",
-        "# [grammar.kind_words]",
-        '# definition = ["Definition", "Def."]',
-        '# lemma      = ["Lemma", "Lem."]',
-        '# theorem    = ["Theorem", "Thm."]',
         "",
     ]
     return "\n".join(out)

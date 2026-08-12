@@ -50,8 +50,8 @@ inductive Cmd where
   | whileDo : BExp → Cmd → Cmd
   deriving Repr
 
-/-- A procedure declaration, in the sense of note, Def. procedure declaration:
-formal parameters and a body, and nothing else.
+/-- A procedure declaration, in the sense of note, def:proc: formal parameters
+and a body, and nothing else.
 
 The core language of the paper has no call construct at all
 (note, rem:no-calls), so this type is declared and never eliminated.  It is
