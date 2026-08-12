@@ -144,6 +144,20 @@ class Config:
     out_dir: Path
     text: str                     # the file verbatim, so an artifact carries it
 
+    # --- elaboration, which is the one thing here that needs a toolchain ---
+    #
+    # Off by default, and that default is a promise rather than a preference:
+    # everything else in this package reads source text, so a build runs
+    # against a formalization whose Lean you have never installed — including
+    # somebody else's.  Turning this on trades that for hover types, real
+    # go-to-definition and Lean's own colouring, and the trade is the user's
+    # to make.  What comes out is baked into the manifest either way: the
+    # artifact never needs a toolchain, only the machine that built it.
+    elaborate: bool = False
+    lake: str = "lake"
+    lake_root: Path | None = None     # the package to run lake in
+    module_prefix: str | None = None  # what Lean calls these modules; inferred
+
     def document(self, doc_id: str) -> Document | None:
         return next((d for d in self.documents if d.id == doc_id), None)
 
@@ -240,6 +254,14 @@ def load(path: Path | None = None, *, start: Path | None = None) -> Config:
         raise ConfigError(f"{path}: [formal] root {formal['root']!r} "
                           f"does not exist ({lean_root})")
 
+    lake_root = None
+    if "lake_root" in formal:
+        lake_root = _abs(root, formal["lake_root"])
+        if not lake_root.is_dir():
+            raise ConfigError(f"{path}: [formal] lake_root "
+                              f"{formal['lake_root']!r} does not exist "
+                              f"({lake_root})")
+
     cfg = Config(
         path=path, root=root,
         title=project.get("title") or root.name,
@@ -249,6 +271,11 @@ def load(path: Path | None = None, *, start: Path | None = None) -> Config:
         grammar=grammar,
         build_dir=build_dir, out_dir=out_dir,
         text=text,
+        elaborate=bool(formal.get("elaborate", False)),
+        lake=str(formal.get("lake", "lake")),
+        lake_root=lake_root,
+        module_prefix=(str(formal["module_prefix"])
+                       if "module_prefix" in formal else None),
     )
     if not cfg.lean_files():
         raise ConfigError(f"{path}: no .lean files under {formal['root']!r}")

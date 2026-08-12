@@ -41,11 +41,19 @@ TEXT_SUFFIXES = {".tex", ".bib", ".sty", ".cls", ".bst", ".clo", ".def",
 ASSET_BUDGET = 8 * 1024 * 1024
 
 
-def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False) -> dict:
+def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False,
+          elaborate: bool | None = None) -> dict:
     """Read both sides and return the manifest.
 
     `with_sources` embeds the LaTeX sources so that a published artifact can
     hand them back; the check command does not need them and says so.
+
+    `elaborate` overrides `[formal] elaborate` for this run; `None` accepts
+    whatever the project configured.  When it is on and it works, every module
+    gains a `sem` overlay and the viewer reads types, definitions and Lean's
+    own colouring off it.  When it is on and it does not work, the reason is
+    printed and the manifest is exactly the one the text-only path produces —
+    a reader that says less, never a build that fails.
     """
     say = (lambda *a: None) if quiet else (lambda *a: print(*a))
 
@@ -81,6 +89,7 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False) -> dic
         all_refs.extend(refs)
     lean_files = import_order(lean_files)
     decl_refs = declaration_uses(lean_files)
+    lean_defs, sem = semantics(cfg, lean_files, elaborate, say)
 
     links, unresolved = resolve(all_refs, labels, cfg.documents)
     if not links:
@@ -108,6 +117,10 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False) -> dic
         "lean_root": rel_to_root(cfg, cfg.lean_root),
         "tex": {k: asdict(v) for k, v in tex_items.items()},
         "lean": lean_files,
+        # a fully qualified Lean name -> the declaration of this build that
+        # defines it, which is what turns a token into a jump.  Empty, and the
+        # viewer falls back to matching what the source wrote.
+        "lean_defs": lean_defs,
         "links": links,
         "by_item": by_item,
         "unresolved": unresolved,
@@ -128,12 +141,94 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False) -> dic
             "unresolved": len(unresolved),
             "located": located,
             "sources": len(sources) + len(assets),
+            "sem": sem,                    # what elaboration added, or why not
         },
     }
     for d in dropped:
         say(f"!! {d} not embedded (over the {ASSET_BUDGET // 1024 // 1024} MB "
             f"asset budget); it is still copied into the artifact folder")
     return manifest
+
+
+# --------------------------------------------------------------------------
+# elaboration
+# --------------------------------------------------------------------------
+
+def semantics(cfg: Config, files: list[dict], want: bool | None,
+              say) -> tuple[dict[str, str], dict]:
+    """Attach what Lean knows to each module, if this build was asked to.
+
+    Returns the name index — `Nat.succ` -> the declaration of *this* build that
+    defines it — and a summary for the stats.  The overlay itself is hung on
+    each module's record, because that is what the viewer already has in hand
+    when it renders one.
+
+    Nothing here raises.  Elaboration is an enrichment: a missing toolchain, a
+    project that does not compile, a SubVerso this version cannot read — all of
+    them mean a reader without hovers, and a reader without hovers is the one
+    every build produced until now.  The reason is printed, because a silently
+    plain build is exactly the failure mode `interproof` spends the rest of its
+    output avoiding.
+    """
+    on = cfg.elaborate if want is None else want
+    if not on:
+        return {}, {"on": False}
+
+    from .subverso import SubVersoError, extract
+
+    try:
+        overlays, notes = extract(cfg, files, say=say)
+    except SubVersoError as e:
+        say(f"!! not elaborated: {e}")
+        return {}, {"on": True, "failed": str(e).split("\n")[0]}
+    except Exception as e:                             # noqa: BLE001 - reported
+        say(f"!! not elaborated: {type(e).__name__}: {e}")
+        return {}, {"on": True, "failed": f"{type(e).__name__}: {e}"}
+
+    for line in notes:
+        say(f"!! {line}")
+
+    defs: dict[str, str] = {}
+    tokens, spent = 0, 0
+    for f in files:
+        ov = overlays.get(f["name"])
+        if not ov:
+            continue
+        f["sem"] = {k: v for k, v in ov.items() if k != "defs"}
+        tokens += len(ov.get("toks", [])) // 4
+        # what this costs the artifact, measured rather than guessed: the
+        # overlay is the one part of a manifest that scales with the size of
+        # the formalization, and it is inlined into a page somebody downloads
+        spent += len(json.dumps(f["sem"], ensure_ascii=False,
+                                separators=(",", ":")))
+        for full, line in ov.get("defs", []):
+            key = _owner(f, full, line)
+            if key:
+                defs[full] = key
+
+    return defs, {"on": True, "modules": len(overlays), "of": len(files),
+                  "tokens": tokens, "names": len(defs), "bytes": spent,
+                  **({"notes": len(notes)} if notes else {})}
+
+
+def _owner(f: dict, full: str, line: int) -> str:
+    """Which declaration of this module defines `full`.
+
+    Two questions in one, and the order matters.  Where the name was defined is
+    a line, and a declaration owns its docstring as well as its body, so
+    containment answers most of it.  The rest are the names a command defines
+    beside the one it was written for — `foo.eq_1`, `foo.match_1` — and those
+    are tied back by their prefix, so following one lands on the declaration a
+    reader was actually looking for rather than nowhere.
+    """
+    for d in f["decls"]:
+        if (d.get("doc_line") or d["line"]) <= line <= d["end_line"]:
+            return f["name"] + "::" + d["name"]
+    short = full.split(".")[-1]
+    for d in f["decls"]:
+        if d["name"] == short or full.endswith("." + d["name"]):
+            return f["name"] + "::" + d["name"]
+    return ""
 
 
 # --------------------------------------------------------------------------
@@ -505,6 +600,16 @@ def report(manifest: dict, *, out: Path | None = None) -> None:
     print(f"references     {s['tex_refs']} between paper items, "
           f"{s['decl_refs']} between declarations")
     print(f"located        {s['located']} items placed in the PDFs by synctex")
+    sem = s.get("sem") or {}
+    if sem.get("on") and sem.get("failed"):
+        # the whole of it was already printed, with what to do about it, when
+        # the build gave up on elaborating; this line is the summary
+        why = sem["failed"]
+        print(f"elaborated     no — {why if len(why) <= 96 else why[:95] + '…'}")
+    elif sem.get("on"):
+        print(f"elaborated     {sem['modules']}/{sem['of']} modules, "
+              f"{sem['tokens']:,} tokens, {sem['names']:,} names"
+              f"  (+{sem.get('bytes', 0) / 1024:.0f} KB in the manifest)")
     print(f"unresolved     {s['unresolved']}")
     for lbl, where in dangling(manifest).items():
         print(f"   ! {lbl:28s} {', '.join(where[:4])}")

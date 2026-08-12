@@ -48,7 +48,8 @@ that has TeXLive is not short of a Python.
 
 You do **not** need a Lean toolchain. Both sides are parsed as source text, so
 Interproof runs against a formalization you have never built — including
-someone else's.
+someone else's. A toolchain buys hover types and real go-to-definition when you
+have one (`--elaborate`, see **Reading the code**); it is never required.
 
 ## Quickstart
 
@@ -99,6 +100,7 @@ be walked backwards to its hypotheses on either side.
 | on a `.lean` edit | reparsed, browser updates, < 1 s | — |
 | on a `.tex` edit | latexmk (incremental) then reparse, 1–3 s | — |
 | needs LaTeX | yes | to build; never to read |
+| needs Lean | only with `--elaborate`, and then only the modules that moved | to build; never to read |
 
 `serve` binds `127.0.0.1` by default, and that is the intended shape: it runs
 `latexmk` on your files and has no authentication. Its real audience is the
@@ -184,6 +186,45 @@ root it belongs to is marked.
   they answer different questions.
 - **Formalized** (`a`): every mechanized statement marked in the paper at once.
   A gap reads as a gap.
+
+## Reading the code
+
+The machine page is not a code listing. Hover a name and it says what the name
+is; click it and the pane goes to where it is defined; every other occurrence
+of whatever is under the pointer is marked while you are on it. A citation in a
+comment stays a link into the paper, and a docstring in a hover card keeps its
+own links.
+
+How much of that is *true* depends on one switch, and the two answers are
+different claims rather than different amounts of polish.
+
+| | default | `[formal] elaborate = true` |
+|---|---|---|
+| needs | nothing | `lake`, and a formalization that compiles |
+| colouring | a tokenizer over the source | Lean's own grammar — a binder is not a constant |
+| hover | the declaration **as written**, and its docstring | the **elaborated** signature or type |
+| jump | a name matched against this build | what the compiler resolved, through `open` and notation |
+| occurrences | — | the identity Lean gave the token |
+
+The default is the promise the rest of this tool makes: everything is source
+text, so a reader builds against a formalization whose toolchain you have never
+installed — including somebody else's. Turning elaboration on trades that for
+the other column, once, at build time: each module goes through
+[SubVerso](https://github.com/leanprover/subverso) and what it learned is baked
+into the manifest.
+
+**The artifact does not change.** The folder still opens with no server, no
+LaTeX and no Lean; only the machine that *builds* it needs a toolchain. And
+nothing on this path can fail a build — a missing `lake`, a package that does
+not require SubVerso, a module that will not compile — each is reported with
+its reason and leaves the reader it would have had anyway.
+
+```bash
+interproof build --elaborate       # just this once
+interproof build --no-elaborate    # …or not this once
+```
+
+Setup, cost and caching: **[docs/config.md](docs/config.md#elaborate--what-the-machine-page-can-say-about-itself)**.
 - **Clean** (`c`): the apparatus put away, leaving the two documents.
 - `/` filter — it searches both indexes at once, by statement, by declaration
   and by file name, and shows what it found in each · `j`/`k` move · `h`/`l`
@@ -237,6 +278,7 @@ Failure modes you will actually hit, and what they mean:
 | every statement `unlocated` | the PDFs were never compiled — drop `--skip-pdf` |
 | 0 links, 0 dangling | the citations use a label prefix not in `[grammar] label_prefixes` |
 | `LaTeX failed` | the document does not compile on its own; fix that first |
+| `not elaborated: … does not require SubVerso` | `--elaborate` was asked for; add the `require` to the package's lakefile, or drop the flag |
 
 Do not edit the Python to retarget the tool. Everything that varies between
 projects is in `interproof.toml`; if something you need is not, that is a bug
@@ -246,10 +288,10 @@ worth reporting rather than a patch worth making.
 
 - **Statement-level granularity.** Proof-body ↔ tactic-block alignment — the
   actual research contribution this project would make — is not here yet.
-- **No goal states, no hover types.** Both need elaboration, so both need a
-  Lean build in the pipeline; [SubVerso](https://github.com/leanprover/subverso)
-  crosses that threshold once for both. Everything here is source text, and the
-  syntax colouring is a tokenizer, not Lean's grammar.
+- **No goal states.** What a tactic did to the proof obligation needs
+  elaboration *and* a place to put it; the elaboration is now here (see
+  **Reading the code**) and the alignment is the item above. Until then the
+  machine page shows the proof, not the proof in progress.
 - **Citations are trusted, not verified.** Nothing checks that a declaration
   states what the statement it cites says. Interproof puts the two texts side
   by side so a reader can check in a second, which is a different and more
@@ -289,9 +331,16 @@ make demo              # build the tracked example
 
 The repository holds the framework and never the material being read.
 `interproof/` is the package (`tex.py` and `lean.py` are the two parsers,
-`synctex.py` is the geometry, `web/` is the viewer), `examples/demo/` is the
-tracked pair that a fresh clone can build, and `docs/` is everything above in
-more detail.
+`synctex.py` is the geometry, `subverso.py` is the optional elaboration pass,
+`web/` is the viewer), `examples/demo/` is the tracked pair that a fresh clone
+can build, and `docs/` is everything above in more detail.
+
+The elaborated path is tested without a Lean toolchain: `tests/fake_subverso.py`
+writes exports in SubVerso's own JSON shape over the example's real modules, and
+the suite asserts that every token the overlay describes slices back out of the
+file as the token it claimed to be. That is the part that can be silently
+wrong — a hover on the wrong word is worse than no hover — so it is the part
+that is pinned.
 
 `python -m unittest discover -s tests` is the suite; CI runs it against
 `examples/demo` with a real TeX installation, then publishes that example to

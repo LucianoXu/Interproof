@@ -15,6 +15,7 @@ var M = null;                        // the manifest, once it has been read
 var TEX, BY, LEAN, LINKS, DOCS;
 var DOC, DOCPOS;                     // id -> document, and its place in reading order
 var DECL, FILE;                      // "File::name" -> decl, "File" -> file record
+var BYNAME, FULL;                    // a written name, and a Lean one, -> decl key
 var BY_DECL, BY_FILE;                // citations per declaration, and per module
 var USES, USEDBY;                    // the reference structure among declarations
 var HAS;                             // labels that exist, per document
@@ -51,6 +52,22 @@ function ingest(m) {
     (f.decls || []).forEach(function (d) { DECL[f.name + "::" + d.name] = d; });
   });
 
+  /* The two ways a name in the machine page becomes somewhere to go.
+
+     `FULL` is the elaborated answer and is only there when the build ran Lean:
+     the compiler resolved `Store.update` to a constant, and the manifest says
+     which declaration of this build defines it.  `BYNAME` is the fallback and
+     is what the source says — every declaration under the name it was written
+     with, kept per module because a name that occurs in two modules is
+     ambiguous everywhere except inside one of them. */
+  FULL = m.lean_defs || {};
+  BYNAME = {};
+  LEAN.forEach(function (f) {
+    (f.decls || []).forEach(function (d) {
+      (BYNAME[d.name] = BYNAME[d.name] || []).push(f.name + "::" + d.name);
+    });
+  });
+
   /* the citations grouped by the lean declaration that makes them, and
      counted per module for the module rows */
   BY_DECL = {}; BY_FILE = {};
@@ -80,6 +97,23 @@ function ingest(m) {
   LOCATED = {};                      // placements are cached per document
   expand = {};                       // a new manifest, a new set of neighbours
   DOCSTAT = docStats();
+}
+
+/* A name as the source writes it, resolved to a declaration — the machine
+   page's own `findLabel`.  Preferring the module being read is the whole of
+   the rule: `update` means this module's `update` when this module has one,
+   and a name held by two other modules is a genuine ambiguity that is dropped
+   rather than guessed at.  Same rule the `uses` graph is built with, and the
+   same caveat: this is a name match, not elaboration. */
+function findDecl(name, inFile) {
+  var c = BYNAME[name];
+  if (!c || !c.length) return null;
+  if (inFile) {
+    for (var i = 0; i < c.length; i++) {
+      if (c[i].indexOf(inFile + "::") === 0) return c[i];
+    }
+  }
+  return c.length === 1 ? c[0] : null;
 }
 
 /* resolve a bare label against the documents, preferring one of them */
@@ -761,7 +795,7 @@ function leanShow(keys, focus, groups, total) {
   leanHeadShow(keys, focus, groups, total);
 
   var same = keys.filter(function (k) { return k.split("::")[0] === fname; });
-  LeanView.load(fname, FILE[fname].text);
+  LeanView.load(fname, FILE[fname].text, FILE[fname].sem);
   /* one key can hold several bands, so which of them is the focused one is
      carried on the band rather than being an index into a parallel list */
   var bands = [];
@@ -893,7 +927,7 @@ function showModule(name) {
   vhead.querySelectorAll("[data-mod]").forEach(function (el) {
     el.onclick = function () { select("mod::" + el.dataset.mod); };
   });
-  LeanView.load(name, FILE[name].text);
+  LeanView.load(name, FILE[name].text, FILE[name].sem);
   LeanView.clear();
   if (moved) LeanView.top();
   wire(verso);
@@ -1214,6 +1248,27 @@ function helpCitation(l) {
          esc(l.file) + ".lean:" + l.line + " &rarr; " + esc(l.key) + "</i></div>";
 }
 
+/* Which of the two things a hover is claiming.  The difference is not a
+   detail: one is the type Lean computed, the other is the text somebody typed,
+   and a reader deciding whether to trust a signature has to be told which they
+   are looking at.  So the page says it about *this* build rather than in a
+   manual somewhere. */
+function helpCode() {
+  var s = (M.stats && M.stats.sem) || {};
+  if (s.on && !s.failed) {
+    return "<p>This build was <b>elaborated</b>: " + (s.modules || 0) + " of " +
+      (s.of || 0) + " modules went through Lean, so the colouring is Lean's " +
+      "own grammar, a hover is the <i>elaborated</i> type or signature, and a " +
+      "jump follows what the compiler resolved.</p>";
+  }
+  return "<p>This build read the formal sources as <b>text</b>. The machine " +
+    "page still links names to the declarations that carry them, and a hover " +
+    "shows a declaration <i>as it is written</i> — but that is a name match, " +
+    "not elaboration: it cannot see through <code>open</code>, and a local " +
+    "binder sharing a declaration's name reads as the declaration. Building " +
+    "with <code>--elaborate</code> replaces all of it with what Lean knows.</p>";
+}
+
 function helpHTML() {
   var s = M.stats, docs = DOCS.map(function (d) { return d.title; }).join(" · ");
   var h = '<button class="hclose" id="helpclose">close &nbsp;esc</button>';
@@ -1236,7 +1291,11 @@ function helpHTML() {
        "in the comments — and a <b>\\Cref link inside the PDF</b>.</li>" +
        "<li>Every <b>green mark</b> in the paper while <b>Formalized</b> is " +
        "on, which is that statement's way into the formalization.</li>" +
-       "</ul>";
+       "<li>Any <b>name in the Lean source</b> that lights up under the " +
+       "pointer: hovering says what it is, clicking goes to where it is " +
+       "defined, and every other occurrence of it is marked while you are " +
+       "on it.</li>" +
+       "</ul>" + helpCode();
 
   h += "<h3>keys</h3><table class='hkeys'>" +
        row("a", "<b>Formalized</b>: mark every statement with a counterpart, at once") +
@@ -1325,7 +1384,21 @@ function boot() {
   railBody = $("#railbody"); rhead = $("#rhead"); vhead = $("#vhead");
   verso = $("#leanpane"); noteEl = $("#note"); liveEl = $("#live");
   rscroll = $("#pdfscroll"); vscroll = $("#leanscroll");
-  LeanView.init(verso, vscroll, function (label) { return findLabel(label); });
+  /* Everything the machine page can ask of the build.  It knows how to draw a
+     module and nothing about what is in one, which is what lets the same pane
+     render an elaborated overlay and a tokenized guess without knowing which
+     it was handed. */
+  LeanView.init(verso, vscroll, {
+    label: function (l) { return findLabel(l); },
+    decl: function (name, inFile) { return findDecl(name, inFile); },
+    full: function (name) { return FULL[name] || null; },
+    info: function (key) {
+      var d = DECL[key];
+      return d ? { kind: d.kind, name: d.name, signature: d.signature,
+                   doc: d.doc, file: d.file, line: d.line } : null;
+    },
+    go: function (key) { if (modeOf(key)) select(key); },
+  });
   PDFView.init($("#pdfpages"), rscroll, function (key) { select(key); }, allMarks);
 
   $("#cleanbtn").onclick = function () { toggleClean(); };

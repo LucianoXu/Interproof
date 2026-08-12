@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from interproof import SCHEMA
 from interproof import config as C
 from interproof import manifest as M
 from interproof.check import check
@@ -88,7 +89,7 @@ class ManifestTests(unittest.TestCase):
         cls.man = M.build(cls.cfg, quiet=True)
 
     def test_schema_and_provenance(self):
-        self.assertEqual(self.man["schema"], 1)
+        self.assertEqual(self.man["schema"], SCHEMA)
         self.assertTrue(self.man["tool"].startswith("interproof "))
         self.assertEqual(self.man["config"], self.cfg.text)
 

@@ -17,4 +17,4 @@ Public entry points:
 
 __version__ = "0.2.0"
 
-SCHEMA = 1          # manifest format; an artifact outlives the tool that made it
+SCHEMA = 2          # manifest format; an artifact outlives the tool that made it

@@ -47,6 +47,7 @@ class LeanDecl:
     refs: list[dict] = field(default_factory=list)
     has_sorry: bool = False
     uses: list[str] = field(default_factory=list)   # "File::name" it names in code
+    signature: str = ""      # the declaration as written, body cut off
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,99 @@ def comment_spans(text: str) -> list[tuple[int, int]]:
         else:
             i += 1
     return spans
+
+
+OPEN, CLOSE = "([{⟨⦃⟮⁅", ")]}⟩⦄⟯⁆"
+BODY_WORD = ("where", "by")
+
+
+def _idch(c: str) -> bool:
+    """A character Lean will accept inside an identifier.
+
+    `isalnum` rather than a range: a formalization writes `σ`, `Γ₀` and `xₐ`,
+    and a signature that stopped at the first non-ASCII letter would cut most
+    real statements in half.
+    """
+    return c.isalnum() or c in "_'!?"
+
+
+def signature_of(code: str) -> str:
+    """A declaration with its body cut off — what it *states*.
+
+    The hover text on the path where nothing was elaborated, so it is the
+    source and says only what the source says: the binders and the type as
+    they are written, up to the `:=`, `where` or `by` that starts proving, or
+    the first `|` of a match on a line of its own.
+
+    Nesting is what makes this more than a `split`.  `(n : Nat := 0)` is a
+    default argument, `fun _ => by simp` inside a binder is part of the
+    statement, and a `--` in a comment above the body is not a body.  So this
+    is a scanner, and it only stops at depth zero.
+    """
+    out, i, n, depth, fresh = [], 0, len(code), 0, True
+    while i < n:
+        c = code[i]
+        if code.startswith("/-", i):
+            d, j = 0, i
+            while j < n:
+                if code.startswith("/-", j):
+                    d += 1
+                    j += 2
+                elif code.startswith("-/", j):
+                    d -= 1
+                    j += 2
+                    if not d:
+                        break
+                else:
+                    j += 1
+            out.append(code[i:j]); i = j; fresh = False; continue
+        if code.startswith("--", i):
+            j = code.find("\n", i)
+            j = n if j < 0 else j
+            out.append(code[i:j]); i = j; continue
+        if c == '"':
+            j = i + 1
+            while j < n:
+                if code[j] == "\\":
+                    j += 2
+                    continue
+                if code[j] == '"':
+                    j += 1
+                    break
+                j += 1
+            out.append(code[i:j]); i = j; fresh = False; continue
+        if _idch(c) and not c.isdigit():
+            j = i
+            while j < n and (_idch(code[j]) or code[j] == "."):
+                j += 1
+            if depth == 0 and code[i:j] in BODY_WORD:
+                break
+            out.append(code[i:j]); i = j; fresh = False; continue
+        if c in OPEN:
+            depth += 1
+        elif c in CLOSE:
+            # clamped: a stray closer from some notation must not put the
+            # scanner below zero and make the next `:=` look top-level
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            if code.startswith(":=", i):
+                break
+            if fresh and c == "|":
+                break
+        if c == "\n":
+            fresh = True
+        elif not c.isspace():
+            fresh = False
+        out.append(c)
+        i += 1
+
+    text = "".join(out).rstrip()
+    # a signature is read in a hover card, so its own indentation is what makes
+    # a multi-line binder list legible; only the block indent is dropped
+    lines = text.split("\n")
+    pad = [len(l) - len(l.lstrip()) for l in lines[1:] if l.strip()]
+    cut = min(pad) if pad else 0
+    return "\n".join([lines[0]] + [l[cut:] for l in lines[1:]]).rstrip()
 
 
 def parse_file(
@@ -231,6 +325,7 @@ def parse_file(
             name=dname, kind=kind, file=name, line=ln_no, end_line=end,
             doc_line=doc_line, doc=doc, section=sec,
             has_sorry=bool(re.search(r"\bsorry\b", code)),
+            signature=signature_of(code),
         ))
 
     # harvest references from comment text only
@@ -342,6 +437,26 @@ def declaration_uses(files: list[dict]) -> int:
     return edges
 
 
+def import_prefix(files: list[dict]) -> str:
+    """The dotted prefix this formalization's own modules are imported under.
+
+    A module is keyed here by its path under the formal root, and Lean names it
+    by its path under the *package* root; the two differ by a prefix nothing in
+    the configuration has to state.  It is read off the imports instead: the
+    prefix is whichever one the imports that resolve to a module of this build
+    agree on.  So neither the import order below nor the module names handed to
+    a Lean tool knows the package's name.
+    """
+    dotted = {f["name"].replace("/", "."): f["name"] for f in files}
+    prefixes: dict[str, int] = {}
+    for f in files:
+        for t in IMPORT_RE.findall(f["text"]):
+            for m in dotted:
+                if t == m or t.endswith("." + m):
+                    prefixes[t[:len(t) - len(m)]] = prefixes.get(t[:len(t) - len(m)], 0) + 1
+    return min(prefixes, key=lambda p: (-prefixes[p], len(p))) if prefixes else ""
+
+
 def import_order(files: list[dict]) -> list[dict]:
     """Modules in dependency order: each one follows everything it imports.
 
@@ -350,21 +465,10 @@ def import_order(files: list[dict]) -> list[dict]:
     opens the index on whatever module starts with an early letter, and
     interleaves the layers, so scrolling the index tells the reader nothing
     about what is built on what.
-
-    Which imports are internal is not assumed: an import names a module by its
-    dotted path, and the root prefix is whatever prefix the imports that do
-    resolve agree on — so nothing here knows the package's name either.
     """
     dotted = {f["name"].replace("/", "."): f["name"] for f in files}
     raw = {f["name"]: IMPORT_RE.findall(f["text"]) for f in files}
-
-    prefixes: dict[str, int] = {}
-    for targets in raw.values():
-        for t in targets:
-            for m in dotted:
-                if t == m or t.endswith("." + m):
-                    prefixes[t[:len(t) - len(m)]] = prefixes.get(t[:len(t) - len(m)], 0) + 1
-    root = min(prefixes, key=lambda p: (-prefixes[p], len(p))) if prefixes else ""
+    root = import_prefix(files)
 
     deps = {f["name"]: [dotted[t[len(root):]] for t in raw[f["name"]]
                         if t.startswith(root) and t[len(root):] in dotted]

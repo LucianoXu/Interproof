@@ -552,6 +552,91 @@ header {
 }
 .lsrc .citec:hover { background: rgba(221,139,60,.18); border-bottom-color: var(--amber); }
 
+/* --- what elaboration coloured ------------------------------------------
+   These class names are SubVerso's own (`Token.Kind.cssClass`), not this
+   project's, so a token kind added upstream arrives already named and only
+   wants a colour here.  A name with a space in it is two classes, which is
+   why the selectors below are compound.
+
+   The distinction the palette is actually built around is `const` against
+   `var`: warm for a constant of the development, cool for a binder local to
+   the proof.  Reading an unfamiliar proof is largely the work of telling
+   those apart, and no tokenizer can do it. */
+.lsrc .keyword          { color: #d98b6a; }
+.lsrc .built-in.delim   { color: #97907f; }
+.lsrc .const            { color: #cfae6e; }
+.lsrc .const.isdef      { color: #e8c07a; font-weight: 600; }
+.lsrc .const.anon-ctor  { color: #c8a97f; }
+.lsrc .var,
+.lsrc .wildcard,
+.lsrc .typed            { color: #93b3c9; }
+.lsrc .literal.string,
+.lsrc .literal.char     { color: #8aab7a; }
+.lsrc .literal.number   { color: #b58cc0; }
+.lsrc .sort,
+.lsrc .option           { color: #b58cc0; }
+.lsrc .level-var,
+.lsrc .level-op,
+.lsrc .level-const      { color: #9184ab; }
+.lsrc .module-name      { color: #9aa88f; }
+.lsrc .punctuation.operator  { color: #a89e89; }
+.lsrc .punctuation.bracket,
+.lsrc .punctuation.separator { color: var(--machine-dim); }
+.lsrc .comment          { color: #6a7a5e; font-style: italic; }
+.lsrc .doc-comment      { color: var(--verd-dim); font-style: italic; }
+
+/* --- a name you can follow ----------------------------------------------
+   Nothing at rest.  A page of code in which every resolvable name is
+   underlined is a page of underlines, and the affordance has to survive being
+   used on almost every token — so it appears under the pointer, the way an
+   editor's does, and the pointer is the only thing that says a name leads
+   somewhere. */
+.lsrc .ref { cursor: pointer; }
+.lsrc .ref:hover {
+  background: rgba(221,139,60,.13);
+  box-shadow: inset 0 -1px 0 rgba(221,139,60,.7);
+}
+/* every other occurrence of whatever is under the pointer — the same
+   identity Lean gave it, so two binders that share a name do not share this */
+.lsrc .occ { background: rgba(255,255,255,.07); }
+.lsrc .ref.occ:hover { background: rgba(221,139,60,.13); }
+
+/* --- the card ------------------------------------------------------------
+   Fixed to the viewport, so it is not clipped by the pane that scrolls under
+   it, and above everything including the help sheet's backdrop. */
+.hcard {
+  position: fixed; z-index: 60; max-width: min(620px, 46vw);
+  background: var(--machine-2); color: var(--machine-fg);
+  border: 1px solid var(--machine-rule); border-radius: var(--radius);
+  box-shadow: 0 14px 40px rgba(0,0,0,.55);
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.6;
+  overflow: hidden;
+}
+.hcard[hidden] { display: none; }
+.hcard .hsig {
+  margin: 0; padding: 9px 13px; white-space: pre-wrap; overflow-x: auto;
+  color: #e0d8c4; font-family: inherit; tab-size: 2;
+}
+.hcard .hdoc {
+  padding: 9px 13px; border-top: 1px solid var(--machine-rule);
+  font-family: var(--ui); font-size: 11.5px; color: var(--machine-fg);
+  white-space: pre-wrap; max-height: 40vh; overflow-y: auto;
+}
+.hcard .hdoc .citec { color: var(--amber); cursor: pointer; }
+.hcard .hdoc code {
+  font-family: var(--mono); font-size: 11px; color: #e0d8c4;
+  background: rgba(255,255,255,.05); padding: 0 3px; border-radius: 2px;
+}
+/* where it is defined, and the way there: the card is the only place a jump
+   is spelled out, so it says the file and the line rather than only offering */
+.hcard .hwhere {
+  padding: 6px 13px; border-top: 1px solid var(--machine-rule);
+  background: rgba(255,255,255,.02);
+  font-size: 10px; letter-spacing: .04em; color: var(--machine-dim);
+  cursor: pointer;
+}
+.hcard .hwhere:hover { color: var(--amber); background: rgba(221,139,60,.10); }
+
 /* --- what is being shown, above it ------------------------------------- */
 
 .vid { display: flex; align-items: baseline; gap: 10px; margin-left: 4px; }

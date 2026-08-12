@@ -36,13 +36,30 @@ def main(argv: list[str] | None = None) -> int:
                              f"(default: the nearest one at or above the cwd)")
         return sp
 
+    # Elaboration is a property of the project, so it lives in the
+    # configuration; these say "not this time" (or "just this once") without
+    # editing it, which is what a CI job and a quick local build both want.
+    # Three states, not two: unset means whatever the project said.
+    def with_elaborate(sp):
+        g = sp.add_mutually_exclusive_group()
+        g.add_argument("--elaborate", dest="elaborate", action="store_true",
+                       default=None,
+                       help="run the formalization through Lean for hover "
+                            "types, go-to-definition and its own colouring; "
+                            "needs a toolchain and a project that builds")
+        g.add_argument("--no-elaborate", dest="elaborate", action="store_false",
+                       help="read the formal sources as text, whatever "
+                            "[formal] elaborate says")
+        return sp
+
     sp = sub.add_parser("init", help=f"write an {CONFIG_NAME} for this project")
     sp.add_argument("dir", nargs="?", type=Path, default=Path("."),
                     help="the project root (default: here)")
     sp.add_argument("--force", action="store_true",
                     help="overwrite an existing configuration")
 
-    sp = with_config(sub.add_parser("build", help="compile a self-contained folder"))
+    sp = with_elaborate(
+        with_config(sub.add_parser("build", help="compile a self-contained folder")))
     sp.add_argument("-o", "--out", type=Path, default=None,
                     help="output folder (default: project.out, or ./site)")
     sp.add_argument("--no-inline", action="store_true",
@@ -53,7 +70,8 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--force-pdf", action="store_true",
                     help="recompile from scratch (latexmk -g)")
 
-    sp = with_config(sub.add_parser("serve", help="read it live, rebuilt as you edit"))
+    sp = with_elaborate(
+        with_config(sub.add_parser("serve", help="read it live, rebuilt as you edit")))
     sp.add_argument("--host", default="127.0.0.1")
     sp.add_argument("--port", type=int, default=8777)
     sp.add_argument("--no-watch", action="store_true",
@@ -62,6 +80,10 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--skip-pdf", action="store_true",
                     help="do not compile the PDFs at startup")
 
+    # No `--elaborate` here on purpose: `check` asks whether the citations
+    # resolve, and no answer it gives changes with the types.  It is the
+    # command a CI job runs on every push, and making that wait for Lean would
+    # be minutes spent to learn nothing.
     sp = with_config(sub.add_parser("check", help="report the correspondence, "
                                                   "and fail on dangling citations"))
     sp.add_argument("--strict", action="store_true",
@@ -72,8 +94,9 @@ def main(argv: list[str] | None = None) -> int:
     sp = with_config(sub.add_parser("pdf", help="compile the documents only"))
     sp.add_argument("--force", action="store_true")
 
-    sp = with_config(sub.add_parser("manifest", help="write the correspondence "
-                                                     "as JSON and stop"))
+    sp = with_elaborate(
+        with_config(sub.add_parser("manifest", help="write the correspondence "
+                                                    "as JSON and stop")))
     sp.add_argument("-o", "--out", type=Path, default=None)
     sp.add_argument("--skip-pdf", action="store_true")
 
@@ -92,15 +115,23 @@ def main(argv: list[str] | None = None) -> int:
 
 # --------------------------------------------------------------------------
 
-def _prepare(args, *, with_sources: bool = True) -> tuple[Config, dict]:
-    """The shared front half: configuration, PDFs, manifest."""
+def _prepare(args, *, with_sources: bool = True,
+             elaborate: bool | None = None) -> tuple[Config, dict]:
+    """The shared front half: configuration, PDFs, manifest.
+
+    `elaborate` is three-valued all the way down — `None` is "whatever the
+    project configured", and only a command that has its own reason to differ
+    passes anything else.
+    """
     from . import manifest as M
     from .pdf import compile_docs
 
     cfg = load(args.config)
     if not getattr(args, "skip_pdf", False):
         compile_docs(cfg, force=getattr(args, "force_pdf", False))
-    return cfg, M.build(cfg, with_sources=with_sources)
+    if elaborate is None:
+        elaborate = getattr(args, "elaborate", None)
+    return cfg, M.build(cfg, with_sources=with_sources, elaborate=elaborate)
 
 
 def cmd_init(args) -> int:
@@ -125,13 +156,13 @@ def cmd_serve(args) -> int:
     cfg = load(args.config)
     return serve(cfg, host=args.host, port=args.port,
                  watch=not args.no_watch, open_browser=args.open,
-                 skip_pdf=args.skip_pdf)
+                 skip_pdf=args.skip_pdf, elaborate=args.elaborate)
 
 
 def cmd_check(args) -> int:
     from .check import check
 
-    cfg, manifest = _prepare(args, with_sources=False)
+    cfg, manifest = _prepare(args, with_sources=False, elaborate=False)
     return check(cfg, manifest, strict=args.strict, as_json=args.json)
 
 

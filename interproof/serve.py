@@ -63,7 +63,7 @@ _EXPECTED = {"ConfigError", "PdfBuildError", "ManifestError", "SiteError",
 # the pipeline, held at arm's length
 # --------------------------------------------------------------------------
 
-def _build_manifest(cfg: Config) -> dict:
+def _build_manifest(cfg: Config, elaborate: bool | None = None) -> dict:
     """The manifest, imported at call time rather than at import time.
 
     Late binding buys two things: the server can be imported and its routing
@@ -72,7 +72,7 @@ def _build_manifest(cfg: Config) -> dict:
     recoverable by fixing the file — instead of a server that will not start.
     """
     from . import manifest as manifest_module
-    return manifest_module.build(cfg)
+    return manifest_module.build(cfg, elaborate=elaborate)
 
 
 def _compile_docs(cfg: Config, doc_ids: set[str] | None = None) -> None:
@@ -95,7 +95,8 @@ class _Live:
     one, since nothing tells the reader it happened.
     """
 
-    def __init__(self, cfg: Config, *, skip_pdf: bool = False) -> None:
+    def __init__(self, cfg: Config, *, skip_pdf: bool = False,
+                 elaborate: bool | None = None) -> None:
         self._lock = threading.Lock()
         self._cfg = cfg
         # `--skip-pdf` is for the session where the document is already being
@@ -103,6 +104,10 @@ class _Live:
         # someone else's business, and running latexmk over them from here
         # would fight that process for the same `.fdb_latexmk`.
         self._skip_pdf = skip_pdf
+        # A live session is the one place elaboration is paid for repeatedly,
+        # so it leans on the extraction cache: only the modules whose text — or
+        # whose imports' text — moved are handed to Lean again.
+        self._elaborate = elaborate
         self._manifest: dict | None = None
         self._gen = 0
         self._error: str | None = None
@@ -188,7 +193,7 @@ class _Live:
 
         manifest: dict | None = None
         try:
-            manifest = _build_manifest(cfg)
+            manifest = _build_manifest(cfg, self._elaborate)
         except Exception as e:                        # noqa: BLE001
             errors.append(_describe(e))
 
@@ -570,7 +575,7 @@ def _handler(live: _Live, page: bytes) -> type[BaseHTTPRequestHandler]:
 
 def serve(cfg: Config, *, host: str = "127.0.0.1", port: int = 8777,
           watch: bool = True, open_browser: bool = False,
-          skip_pdf: bool = False) -> int:
+          skip_pdf: bool = False, elaborate: bool | None = None) -> int:
     """Serve the reader live until interrupted.  Returns a process exit code."""
     if not _loopback(host):
         print(f"!! binding {host}: this server runs latexmk on the files it is "
@@ -578,7 +583,7 @@ def serve(cfg: Config, *, host: str = "127.0.0.1", port: int = 8777,
               f"!! it is a development tool for one machine; do not put it on "
               f"a network.", file=sys.stderr)
 
-    live = _Live(cfg, skip_pdf=skip_pdf)
+    live = _Live(cfg, skip_pdf=skip_pdf, elaborate=elaborate)
     # Rendered once.  The page is the viewer, and the viewer is not what the
     # session edits; re-rendering it per request would inline pdf.js on every
     # reload and still show the same bytes.

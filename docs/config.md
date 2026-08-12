@@ -79,6 +79,10 @@ the right place.
 | `kind` | | `"lean"` | Lean 4 is what this version reads |
 | `root` | yes | — | the directory holding the `.lean` sources |
 | `exclude` | | `[]` | globs to skip, e.g. `["**/Test/*.lean"]` |
+| `elaborate` | | `false` | run the formalization through Lean for types, jumps and its own colouring |
+| `lake` | | `"lake"` | the build tool to invoke, when elaborating |
+| `lake_root` | | nearest lakefile | the package directory to run it in |
+| `module_prefix` | | inferred | what Lean calls these modules |
 
 A module is keyed by its **path under `root`**, not by its file name, so two
 subdirectories may hold the same name and the directory structure survives into
@@ -87,6 +91,71 @@ to show.
 
 Nothing here names the Lean package: import edges are resolved by finding the
 prefix that the imports which do resolve agree on.
+
+### `elaborate` — what the machine page can say about itself
+
+Off, everything Interproof reads is source text. That is what lets a build run
+against a formalization whose toolchain you have never installed, including
+somebody else's, and it is the default for that reason. The machine page still
+colours itself, still links citations, and still follows a name to the
+declaration that carries it — by matching the name, with the imprecision a name
+match has.
+
+On, each module is handed to
+[SubVerso](https://github.com/leanprover/subverso) once at build time and the
+page gains what only elaboration knows:
+
+- **colouring by Lean's own grammar** rather than by a keyword list — in
+  particular a local binder is told apart from a constant, which no tokenizer
+  can do;
+- **hover types**: the elaborated signature of a constant with its docstring,
+  and the type of a binder;
+- **go to definition** that follows what the compiler resolved, including
+  through `open` and through notation;
+- **every occurrence** of whatever is under the pointer, by the identity Lean
+  gave it — so two binders that share a name do not share the highlight.
+
+What it costs:
+
+- **a Lean toolchain and a formalization that compiles.** `lake` must be on
+  `PATH`, and the package must require SubVerso:
+
+  ```toml
+  # lakefile.toml, in the package that holds the formalization
+  [[require]]
+  name = "subverso"
+  git  = "https://github.com/leanprover/subverso"
+  rev  = "main"
+  ```
+
+  ```lean
+  -- lakefile.lean, equivalently
+  require subverso from git "https://github.com/leanprover/subverso"
+  ```
+
+  then `lake update subverso` once.
+
+- **time.** Every module is elaborated separately, so each one pays for
+  importing its whole dependency closure. The result is cached under the build
+  directory and keyed by the module's text, its imports' text, and the resolved
+  dependency set — so `serve --elaborate` re-elaborates only what moved, and a
+  second `build` is nearly free.
+
+- **size.** The overlay is the one part of a manifest that grows with the size
+  of the *formalization* rather than with the size of the correspondence.
+  `build` reports what it added; `--no-inline` is the escape when the page has
+  to stay small.
+
+**Nothing about the artifact changes.** Elaboration happens on the machine that
+builds, and what it learned is baked into the manifest; the folder that comes
+out still opens with no server, no LaTeX and no Lean. And nothing here can fail
+the build: no toolchain, no SubVerso, a module that does not compile — each is
+printed with its reason and leaves a reader that says less, never a build that
+stops.
+
+`--elaborate` and `--no-elaborate` override this per run, on `build`, `serve`
+and `manifest`. `check` never elaborates: it asks whether the citations
+resolve, and no answer it gives changes with the types.
 
 ## `[grammar]` — this project's LaTeX conventions
 
