@@ -100,7 +100,17 @@ be walked backwards to its hypotheses on either side.
 | on a `.lean` edit | reparsed, browser updates, < 1 s | — |
 | on a `.tex` edit | latexmk (incremental) then reparse, 1–3 s | — |
 | needs LaTeX | yes | to build; never to read |
-| needs Lean | only with `--elaborate`, and then only the modules that moved | to build; never to read |
+| needs Lean | only with `--elaborate`, and never on the path the page waits for | to build; never to read |
+
+With `serve --elaborate` the page is published **twice** per edit. The first is
+the reader this tool has always produced, in the time it has always taken; the
+second replaces it with the elaborated one when Lean is done. Elaboration
+cannot sit on the first path: every module is handed to Lean separately and
+each invocation imports that module's whole closure, so it is seconds on a
+development with no dependencies and minutes on one built over Mathlib — and an
+edit to a base module re-elaborates everything that imports it, because a type
+shown downstream genuinely changes when the module above it does. So the edit
+lands immediately and the types catch up.
 
 `serve` binds `127.0.0.1` by default, and that is the intended shape: it runs
 `latexmk` on your files and has no authentication. Its real audience is the

@@ -108,6 +108,11 @@ class _Live:
         # so it leans on the extraction cache: only the modules whose text — or
         # whose imports' text — moved are handed to Lean again.
         self._elaborate = elaborate
+        # the elaborated pass runs behind the rebuild, one at a time, and the
+        # newest request wins — see `_want_enrich`
+        self._enrich_lock = threading.Lock()
+        self._enrich_busy = False
+        self._enrich_next: tuple[Config, list[str]] | None = None
         self._manifest: dict | None = None
         self._gen = 0
         self._error: str | None = None
@@ -193,13 +198,75 @@ class _Live:
 
         manifest: dict | None = None
         try:
-            manifest = _build_manifest(cfg, self._elaborate)
+            # Always the text-only pass first, whatever this session was asked
+            # for.  Reading the sources is a fraction of a second and handing
+            # each module to Lean is not — see `_enrich` — and a reader whose
+            # page stops following their edits for a minute has lost the thing
+            # `serve` exists to give them.
+            manifest = _build_manifest(cfg, False)
         except Exception as e:                        # noqa: BLE001
             errors.append(_describe(e))
 
         self._settle(cfg, manifest, errors, t0,
                      "config" if reload_config else
                      ("tex" if compile_tex else "lean"))
+        if manifest is not None:
+            self._want_enrich(cfg, errors)
+
+    # -- elaboration, behind the rebuild ------------------------------------
+    #
+    # Elaboration cannot go in the pass above.  Every module is handed to Lean
+    # separately and each invocation imports that module's whole closure, so
+    # the cost is seconds on a development with no dependencies and minutes on
+    # one built over Mathlib — and it is not only the edited module: a type
+    # shown in a module downstream genuinely changes when the module it imports
+    # does, so an edit to a base module re-elaborates everything that imports
+    # it.  Blocking on that would mean an editor whose page follows a `.lean`
+    # edit a minute later, which is not following.
+    #
+    # So the page is published twice.  The first is the reader this tool has
+    # always produced, within the second it has always taken; the second
+    # replaces it with the elaborated one when Lean is done.  The reader sees
+    # their edit immediately and the types catch up.
+
+    def _want_enrich(self, cfg: Config, errors: list[str]) -> None:
+        """Ask for an elaborated pass, superseding any that is queued."""
+        on = cfg.elaborate if self._elaborate is None else self._elaborate
+        if not on:
+            return
+        with self._enrich_lock:
+            self._enrich_next = (cfg, list(errors))
+            if self._enrich_busy:
+                # one is running; it will pick this up when it finishes rather
+                # than a second `lake` fighting the first for the same lock
+                return
+            self._enrich_busy = True
+        threading.Thread(target=self._enrich, daemon=True).start()
+
+    def _enrich(self) -> None:
+        while True:
+            with self._enrich_lock:
+                want = self._enrich_next
+                self._enrich_next = None
+                if want is None:
+                    self._enrich_busy = False
+                    return
+            cfg, errors = want
+            with self._lock:
+                started = self._gen
+            t0 = time.monotonic()
+            try:
+                manifest = _build_manifest(cfg, True)
+            except Exception as e:                    # noqa: BLE001
+                self._settle(None, None, errors + [_describe(e)], t0, "lean+")
+                continue
+            with self._lock:
+                stale = self._gen != started
+            if stale:
+                # the sources moved while Lean was working; publishing this
+                # would put types from the previous edit on the current text
+                continue
+            self._settle(cfg, manifest, errors, t0, "lean+")
 
     def _settle(self, cfg: Config | None, manifest: dict | None,
                 errors: list[str], t0: float, kind: str) -> None:

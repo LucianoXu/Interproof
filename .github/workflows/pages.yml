@@ -57,14 +57,49 @@ jobs:
         run: pip install -e .
 
       # A dangling citation must not reach the published page: the one claim
-      # this reader makes about itself is that the two sides agree.
+      # this reader makes about itself is that the two sides agree.  This runs
+      # before Lean is anywhere near the job, because `check` asks whether the
+      # citations resolve and no answer it gives changes with the types.
       - name: check
         working-directory: examples/demo
         run: interproof check
 
+      # --- the elaborated half -------------------------------------------
+      #
+      # Pages serves bytes; it has no opinion about Lean.  Elaboration happens
+      # *here*, on the runner, and what it learned is baked into the page — so
+      # the published site is the same self-contained folder it always was and
+      # needs no more of GitHub than any other static site.
+      #
+      # The example depends on nothing but Lean core, which is what makes this
+      # affordable: no Mathlib to fetch, no `lake exe cache get`.
+      - name: install Lean
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      # Three caches in one, and the third is the interesting one.  `~/.elan`
+      # is the toolchain and `.lake` is the compiled dependency; Interproof's
+      # own extraction cache is keyed by each module's text and its imports'
+      # text, so a commit touching one module re-elaborates that module and
+      # what imports it, and restores the rest.  The restore-key is what makes
+      # that possible: an exact miss on the sources still recovers everything
+      # that does not depend on them.
+      - name: cache Lean and what has already been elaborated
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.elan
+            examples/demo/lean/.lake
+            examples/demo/.interproof/build/subverso
+          key: lean-${{ hashFiles('examples/demo/lean/lean-toolchain', 'examples/demo/lean/lake-manifest.json') }}-${{ hashFiles('examples/demo/lean/**/*.lean') }}
+          restore-keys: |
+            lean-${{ hashFiles('examples/demo/lean/lean-toolchain', 'examples/demo/lean/lake-manifest.json') }}-
+
       - name: build
         working-directory: examples/demo
-        run: interproof build -o ../../_site
+        run: interproof build --elaborate -o ../../_site
 
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v4

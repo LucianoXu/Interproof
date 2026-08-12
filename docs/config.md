@@ -148,8 +148,20 @@ What it costs:
 - **time.** Every module is elaborated separately, so each one pays for
   importing its whole dependency closure. The result is cached under the build
   directory and keyed by the module's text, its imports' text, and the resolved
-  dependency set — so `serve --elaborate` re-elaborates only what moved, and a
-  second `build` is nearly free.
+  dependency set — so a second `build` is nearly free.
+
+  Note what that key implies: an edit to a *base* module invalidates everything
+  that imports it, because a type shown downstream genuinely changes when the
+  module above it does. On the tracked example that is 5 modules and 4.6
+  seconds; on a development over Mathlib it is minutes. Which is why
+  `serve --elaborate` never puts elaboration on the path the page waits for —
+  it publishes the text reader within its usual second and the elaborated one
+  behind it, superseding any pass whose sources have since moved.
+
+  In CI, cache the build directory's `subverso/` alongside `~/.elan` and
+  `.lake`, with a `restore-keys` prefix that ignores the sources: an exact miss
+  still recovers every module the commit did not touch. `.github/workflows/pages.yml`
+  in this repository does exactly that.
 
 - **size.** The overlay is the one part of a manifest that grows with the size
   of the *formalization* rather than with the size of the correspondence.
