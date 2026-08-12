@@ -268,7 +268,7 @@ header {
    nothing about the branch it is on except how deep it sits. */
 .row {
   display: flex; align-items: baseline; gap: 7px;
-  padding: 4px 11px 4px calc(9px + var(--d) * 10px);
+  padding: 1.5px 11px 1.5px calc(9px + var(--d) * 9px);
   position: relative; cursor: pointer;
   transition: background .12s;
   animation: rise .4s backwards;
@@ -329,15 +329,17 @@ header {
 
 /* --- the nodes ---------------------------------------------------------- */
 
+/* A branch is named in its own case.  Small caps read as a label, and most of
+   these are not labels — a section carries the title somebody wrote, and a
+   statement that has parts is a node now too, so uppercasing the lot turned
+   the paper's own words into shouting and cost a third of the rail's width in
+   letter-spacing. */
 .nd > .nm {
   font-family: var(--ui);
-  font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase;
-  color: var(--ink-faint);
+  font-size: 11px; letter-spacing: .01em;
+  color: var(--ink-soft);
 }
-/* a directory and a file are named, not titled: their own case, kept */
-.nd.dir > .nm, .nd.file > .nm {
-  font-size: 11px; letter-spacing: .02em; text-transform: none;
-}
+.nd.dir > .nm { color: var(--ink-faint); }
 .nd.file > .nm { color: var(--ink-soft); }
 /* a document or a module: a place in the tree, and a thing that opens */
 .nd.sel { background: var(--paper-hi); }
@@ -349,11 +351,16 @@ header {
 .nd.root {
   position: sticky; top: 0; z-index: 2;
   background: var(--paper);
-  padding-top: 8px; padding-bottom: 8px;
+  padding-top: 5px; padding-bottom: 5px;
   border-top: 1px solid var(--rule); border-bottom: 1px solid var(--paper-2);
 }
 .nd.root::before { display: none; }
-.nd.root > .nm { font-size: 10px; letter-spacing: .16em; color: var(--ink-soft); }
+/* the index headers stay set as labels: two rows, and they name the tree
+   rather than anything in it */
+.nd.root > .nm {
+  font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
 .nd.root > .tw::before { border-left-color: var(--ink-soft); }
 /* the index the two pages are answering to */
 .nd.root.cur > .nm { color: var(--rust); }

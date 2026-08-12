@@ -267,10 +267,14 @@ def _anchors(directives: list[tuple[int, str, str]], items: list[TexItem],
         return out
     owners = [it for it in items if it.end_line > it.line]
 
-    placed = [(target_line(lines, ln, want), path)
-              for ln, path, want in directives]
+    # Sorted by the line each claims, and then by the order the directives were
+    # written in — not by name.  Three productions of a grammar share one
+    # source line, and sorting those by path listed them alphabetically:
+    # `add, lit, var` where the paper reads `n | x | a_1 + a_2`.
+    placed = [(target_line(lines, ln, want), i, path)
+              for i, (ln, path, want) in enumerate(directives)]
     placed.sort()
-    for k, (at, path) in enumerate(placed):
+    for k, (at, _, path) in enumerate(placed):
         # The parent is read off the *path*: `def:aeval:arith:lit` is a part of
         # `def:aeval:arith`, which is itself a part of `def:aeval`.  Taking the
         # enclosing environment instead would make every depth a sibling of
@@ -281,7 +285,8 @@ def _anchors(directives: list[tuple[int, str, str]], items: list[TexItem],
         # `def:aeval:arith:lit` under `def:aeval:arith` — must not cut its
         # parent short, or a clause with sub-parts is banded only down to the
         # first of them.
-        nxt = next((a for a, q in placed[k + 1:] if not q.startswith(path + ":")), 0)
+        nxt = next((a for a, _, q in placed[k + 1:]
+                    if not q.startswith(path + ":")), 0)
         stop = nxt - 1 if nxt else 0
         # An anchor also stops at the `\end{...}` that closes something it did
         # not open.  Without this the last part of a list runs to the end of
