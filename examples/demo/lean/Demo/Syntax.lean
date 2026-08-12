@@ -17,11 +17,11 @@ namespace Demo
 
 /-- Arithmetic expressions: paper:def:aexp. -/
 inductive AExp where
-  /-- paper:def:aeval:arith:lit -/
+  /-- paper:def:aexp:lit, evaluated by paper:def:aeval:arith:lit. -/
   | lit : Nat → AExp
-  /-- paper:def:aeval:arith:var -/
+  /-- paper:def:aexp:var, evaluated by paper:def:aeval:arith:var. -/
   | var : Var → AExp
-  /-- paper:def:aeval:arith:add -/
+  /-- paper:def:aexp:add, evaluated by paper:def:aeval:arith:add. -/
   | add : AExp → AExp → AExp
   deriving Repr
 
@@ -35,9 +35,13 @@ def AExp.fv : AExp → List Var
 /-- Boolean expressions: paper:def:bexp.  `BExp.tt` is the paper's `true`;
 the name avoids the reserved one. -/
 inductive BExp where
+  /-- paper:def:bexp:tt -/
   | tt : BExp
+  /-- paper:def:bexp:le -/
   | le : AExp → AExp → BExp
+  /-- paper:def:bexp:not -/
   | not : BExp → BExp
+  /-- paper:def:bexp:and -/
   | and : BExp → BExp → BExp
   deriving Repr
 
@@ -46,15 +50,19 @@ inductive BExp where
 `whileDo` and `ite` rather than `while` and `if` because both of the obvious
 names are reserved tokens in Lean 4. -/
 inductive Cmd where
+  /-- paper:def:cmd:skip -/
   | skip : Cmd
+  /-- paper:def:cmd:assign -/
   | assign : Var → AExp → Cmd
+  /-- paper:def:cmd:seq -/
   | seq : Cmd → Cmd → Cmd
+  /-- paper:def:cmd:ite -/
   | ite : BExp → Cmd → Cmd → Cmd
-  /-- The loop, the one production the paper's grammar spends a sentence on:
-  paper:def:cmd:while.  No anchor by that name exists on the paper side yet, so
-  this reads as a citation of the whole definition with `while` recorded —
-  coarser than it was written, never absent.  The band is this constructor,
-  not the datatype: a docstring on a member belongs to the member. -/
+  /-- The loop: paper:def:cmd:while.  The band on the left is that production
+  alone — the paper's grammar sets all five on one typeset line, so the
+  rectangle comes from the marked build rather than from SyncTeX.  The band on
+  the right is this constructor, not the datatype: a docstring on a member
+  belongs to the member. -/
   | whileDo : BExp → Cmd → Cmd
   deriving Repr
 

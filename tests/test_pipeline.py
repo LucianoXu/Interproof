@@ -171,13 +171,21 @@ class ManifestTests(unittest.TestCase):
         the statement, so the tail is peeled and recorded rather than dangled —
         coarser than it was written, never absent.
         """
-        path = [l for l in self.man["links"] if l.get("sub")]
-        self.assertTrue(path, "the example must cite a sub-anchor")
-        l = path[0]
-        self.assertEqual(l["label"], "def:cmd")
-        self.assertEqual(l["sub"], "while")
-        self.assertEqual(l["key"], "paper::def:cmd")
-        self.assertEqual(self.man["unresolved"], [], "a path must not dangle")
+        ref = {"label": "def:cmd:nosuchpart", "doc_hint": "", "file": "M",
+               "line": 1, "decl": None}
+        known = {d.id: ({"def:cmd"} if d.id == "paper" else set())
+                 for d in self.cfg.documents}
+        links, unresolved = M.resolve([ref], known, self.cfg.documents)
+        self.assertEqual(unresolved, [], "a path must not dangle")
+        self.assertEqual(links[0]["label"], "def:cmd")
+        self.assertEqual(links[0]["sub"], "nosuchpart")
+        self.assertEqual(links[0]["key"], "paper::def:cmd")
+
+        # and when the anchor *does* exist, nothing is peeled
+        self.assertIn("paper::def:cmd:while", self.man["tex"])
+        got = [l for l in self.man["links"] if l["key"] == "paper::def:cmd:while"]
+        self.assertTrue(got)
+        self.assertNotIn("sub", got[0])
 
     def test_the_viewer_is_told_what_a_label_looks_like(self):
         """The page linkifies what the build read, not a list of its own."""

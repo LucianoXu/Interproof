@@ -123,15 +123,30 @@ def _patch(root: Path, doc_root: Path, main: Path,
         if not target.exists():
             continue
         lines = target.read_text(encoding="utf-8", errors="replace").split("\n")
+        # Offsets are taken against the *unpatched* line and spliced from the
+        # right.  Patching left to right would let a later quote match inside a
+        # marker already inserted — `\ipmark{def:aexp:lit(}` contains an `x`,
+        # and a production quoted as `x` would be found there instead of in the
+        # grammar.
+        by_line: dict[int, list[tuple[int, int, str]]] = {}
         for at, path, want in items:
             if not 1 <= at <= len(lines):
                 continue
             body = lines[at - 1]
-            if want not in body:
+            hits = [i for i in range(len(body)) if body.startswith(want, i)]
+            if len(hits) != 1:
+                # ambiguous or absent: say so rather than mark the wrong one
                 continue
-            lines[at - 1] = body.replace(
-                want, r"\ipmark{%s(}%s\ipmark{%s)}" % (path, want, path), 1)
-            done += 1
+            by_line.setdefault(at, []).append((hits[0], len(want), path))
+
+        for at, spans in by_line.items():
+            body = lines[at - 1]
+            for start, width, path in sorted(spans, reverse=True):
+                body = (body[:start] + r"\ipmark{%s(}" % path
+                        + body[start:start + width] + r"\ipmark{%s)}" % path
+                        + body[start + width:])
+                done += 1
+            lines[at - 1] = body
         target.write_text("\n".join(lines), encoding="utf-8")
 
     head = main.read_text(encoding="utf-8", errors="replace")

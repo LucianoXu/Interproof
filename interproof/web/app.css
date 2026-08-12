@@ -411,20 +411,18 @@ header {
 .mark.off { background: rgba(120,110,90,.1); box-shadow: inset 2px 0 0 var(--ink-faint); }
 @keyframes markin { from { opacity: 0; } to { opacity: 1; } }
 
-/* The parts of one statement, told apart.
-   Three spans of a single display line read as one smear unless they are
-   given different colours, and the colour is also what carries a part across
-   the gutter: the region on the page and the declaration on the machine side
-   are the same hue.  The index is the part's position among its siblings, so
-   a colour does not move when a part is added beside it.
-   Hues are spaced around the wheel and kept at the rust family's saturation,
-   so a marked page still reads as this document and not as a highlighter set. */
-.mark.on.t0 { background: rgba(221,139,60,.20);  box-shadow: inset 2px 0 0 #a93c16, 0 0 0 1px rgba(169,60,22,.25); }
-.mark.on.t1 { background: rgba(62,142,124,.20);  box-shadow: inset 2px 0 0 #1f6b59, 0 0 0 1px rgba(31,107,89,.25); }
-.mark.on.t2 { background: rgba(104,110,190,.20); box-shadow: inset 2px 0 0 #454c9c, 0 0 0 1px rgba(69,76,156,.25); }
-.mark.on.t3 { background: rgba(178,110,40,.20);  box-shadow: inset 2px 0 0 #8a5410, 0 0 0 1px rgba(138,84,16,.25); }
-.mark.on.t4 { background: rgba(160,80,130,.20);  box-shadow: inset 2px 0 0 #7d3564, 0 0 0 1px rgba(125,53,100,.25); }
-.mark.on.t5 { background: rgba(90,130,60,.20);   box-shadow: inset 2px 0 0 #456a22, 0 0 0 1px rgba(69,106,34,.25); }
+/* A *part* of a statement, not a statement.
+   The level is what the colour carries: amber is a statement, verdigris is a
+   part of one — a clause, a production, one equation of a display line.  So a
+   reader can tell at a glance whether the band names the whole thing or a
+   piece of it, which matters most exactly where the pieces are small and
+   sitting on the same line as each other. */
+.mark.on.part {
+  background: rgba(62,142,124,.20);
+  box-shadow: inset 2px 0 0 #1f6b59, 0 0 0 1px rgba(31,107,89,.28);
+}
+.mark.off.part { background: rgba(62,142,124,.09); box-shadow: inset 2px 0 0 rgba(31,107,89,.45); }
+
 
 /* every formalized item, marked at once — a standing overlay under the
    selection band, and the one mark that answers to a click */

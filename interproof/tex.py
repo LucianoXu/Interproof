@@ -265,7 +265,26 @@ def _anchors(directives: list[tuple[int, str, str]], items: list[TexItem],
         # every other, and the colours that tell three spans of one line apart
         # would be shared out across a whole definition.
         parent = path.rsplit(":", 1)[0]
-        stop = placed[k + 1][0] - 1 if k + 1 < len(placed) else 0
+        # The next anchor that is not *inside* this one.  A part of a part —
+        # `def:aeval:arith:lit` under `def:aeval:arith` — must not cut its
+        # parent short, or a clause with sub-parts is banded only down to the
+        # first of them.
+        nxt = next((a for a, q in placed[k + 1:] if not q.startswith(path + ":")), 0)
+        stop = nxt - 1 if nxt else 0
+        # An anchor also stops at the `\end{...}` that closes something it did
+        # not open.  Without this the last part of a list runs to the end of
+        # the whole statement and swallows the sentence after `\end{enumerate}`
+        # — the band then reaches visibly below the clause it names.
+        depth = 0
+        for j in range(at, len(lines)):
+            body = lines[j].strip()
+            if body.startswith("\\begin{"):
+                depth += 1
+            elif body.startswith("\\end{"):
+                if depth == 0:
+                    stop = min(stop or j, j)
+                    break
+                depth -= 1
         # the statement it is inside, innermost first — for its extent and its
         # place in the index, which are facts about where it sits, not about
         # what it is a part of

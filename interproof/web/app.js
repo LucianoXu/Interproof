@@ -702,7 +702,8 @@ function paperShow(keys, focus) {
     var use = (state.proof && t.proof_rect) ? [t.proof_rect]
               : (t.rects && t.rects.length ? t.rects : [t.rect]);
     use.forEach(function (r) {
-      if (r) rects.push(t.tint >= 0 ? Object.assign({ tint: t.tint }, r) : r);
+      // the level travels with the region: a part is coloured as a part
+      if (r) rects.push(t.kind === "anchor" ? Object.assign({ part: 1 }, r) : r);
     });
   });
 

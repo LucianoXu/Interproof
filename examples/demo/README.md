@@ -132,18 +132,18 @@ Produced by the repository's own parsers over these sources.
 
 | | |
 |---|---|
-| LaTeX items | **38** — paper 27, note 11 |
-| … statements (`definition`/`lemma`/…) | 28, plus 2 anchors naming parts of one |
+| LaTeX items | **53** — paper 42, note 11 |
+| … statements (`definition`/`lemma`/…) | 28, plus 17 anchors naming parts of them |
 | … sections and subsections | 8 |
 | … with a `proof` environment | 13 |
 | `\Cref` edges between items | 35 |
 | **statements with a Lean counterpart** | **26 / 28** |
-| items located in the PDF by SyncTeX | 30 / 30 — 28 statements and both anchors |
+| items located in the PDF | 60 — 28 statements and 17 anchors, 15 of those measured to the point |
 | Lean modules | 5 |
 | Lean declarations | 57 — 31 written, 26 constructors and fields read out of them (1 with `sorry`) |
 | Lean lines | 427 |
-| **citations Lean → LaTeX** | **44**, every one of them by label |
-| distinct items cited | 30 |
+| **citations Lean → LaTeX** | **58**, every one of them by label |
+| distinct items cited | 45 |
 | use edges between declarations | 161 |
 | **dangling citations** | **0** |
 

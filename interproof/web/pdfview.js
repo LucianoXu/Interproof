@@ -231,7 +231,7 @@ function band(rect, cls) {
     var top = p === rect.page ? rect.top : 0;
     var bot = p === end ? rect.bottom : vp.height;
     var el = document.createElement("div");
-    el.className = cls + (rect.tint >= 0 ? " t" + (rect.tint % 6) : "");
+    el.className = cls + (rect.part ? " part" : "");
     el.style.left = ((rect.x - px) / vp.width * 100) + "%";
     el.style.width = ((rect.w + 2 * px) / vp.width * 100) + "%";
     el.style.top = ((top - py) / vp.height * 100) + "%";
