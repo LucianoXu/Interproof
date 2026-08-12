@@ -298,10 +298,23 @@ header {
   left: calc(var(--d) * var(--step) + 5px); width: 1px;
   background: var(--paper-2);
 }
-/* only on the rows that stand for something to read: a branch is a place, and
-   a place does not carry citations — everything under it does */
-.itm.has::before { background: var(--rust); width: 2px; }
-.row.sel::before { background: var(--ink); width: 2px; }
+/* The spine keeps one weight.  It used to thicken to 2px on a row carrying a
+   citation and on the selected one, which was legible while it was a marker at
+   each row's own indent — but it is the tree's guide now, and 109 of the
+   example's 131 rows carry a citation, so the thin line became the exception
+   and the column looked like it changed gauge at random.  Hue still varies,
+   which costs the geometry nothing, and the badge, the name and the count all
+   say `has` already. */
+.itm.has::before { background: var(--rust); }
+.row.sel::before { background: var(--ink); }
+
+/* The selected row is marked at the rail's edge instead — clear of the tree,
+   in one place whatever the depth, and it reads as "you are here" rather than
+   as a branch drawn heavier than its neighbours. */
+.row.sel::after {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 2px; background: var(--rust);
+}
 
 .tw { flex: none; width: 9px; align-self: stretch; position: relative; }
 /* On a row that opens a file the twisty is the only thing that folds, so it
