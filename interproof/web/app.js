@@ -51,7 +51,8 @@ function ingest(m) {
     (f.decls || []).forEach(function (d) { DECL[f.name + "::" + d.name] = d; });
   });
 
-  /* citations grouped by lean declaration, and per module, for the file index */
+  /* the citations grouped by the lean declaration that makes them, and
+     counted per module for the module rows */
   BY_DECL = {}; BY_FILE = {};
   LINKS.forEach(function (l) {
     var k = l.file + "::" + (l.decl || "⟨module⟩");
@@ -165,10 +166,9 @@ function openPDF(id, items) {
    state
    ========================================================================= */
 
-/* `sel` is the focused rail row.  The file index opens two things at once —
-   one document, one module — so it keeps its own pair; both stay marked in
-   the rail, and `sel` only says which of them was touched last. */
-var state = { mode: "paper", sel: null, q: "", proof: false, fdoc: null, ffile: null,
+/* `sel` is the focused rail row, and `mode` is only which of the two indexes
+   it belongs to — the key says that for itself, so nothing sets it directly. */
+var state = { mode: "paper", sel: null, q: "", proof: false,
               all: false, marked: [], clean: false };
 
 var $ = function (s) { return document.querySelector(s); };
@@ -203,8 +203,8 @@ var KINDSHORT = { theorem: "thm", lemma: "lem", definition: "def", proposition: 
                   corollary: "cor", remark: "rem", example: "ex", fact: "fact",
                   conjecture: "conj", assumption: "assm" };
 
-/* what each document holds, for the file index: labelled items, and how many
-   of them a Lean module cites */
+/* what each document holds, for its row in the index: labelled statements, and
+   how many of them the formalization cites */
 function docStats() {
   var out = {};
   DOCS.forEach(function (d) { out[d.id] = { items: 0, linked: 0 }; });
@@ -221,22 +221,36 @@ function docStats() {
    the index
    =========================================================================
 
-   Three indexes, one tree.  They used to be three tabs — one visible at a
-   time, and the mode was something you set *before* you were allowed to
-   look — and the grouping each of them already had was flattened into
-   headings above runs of rows.  That grouping is a hierarchy: a statement
-   sits in a section of a document, a declaration in a module in a directory.
-   So the three are roots of one tree that folds, the groups are its levels,
-   and picking a row is what says which index you are reading in.  Fold the
-   two you are not using away and they stay folded; the one you are in still
-   opens at whatever you last selected. */
+   Two indexes, one tree.  They used to be tabs — one visible at a time, and
+   the mode was something you set *before* you were allowed to look — and the
+   grouping each of them already had was flattened into headings above runs of
+   rows.  That grouping is a hierarchy: a statement sits in a section of a
+   document, a declaration in a module in a directory.  So the two are roots
+   of one tree that folds, the groups are its levels, and picking a row is
+   what says which index you are reading in.  Fold the one you are not using
+   away and it stays folded; the other still opens at whatever you last
+   selected.
+
+   Notes is the written side and Lean is the machine side, and between them
+   they already carry both source trees — which is why there is no third index
+   of the files as such.  For that to be true rather than nearly true, a row
+   that stands for a *file* opens it: a document row opens the whole PDF, a
+   module row the whole module, neither banded because nothing was selected
+   inside them.  That is what keeps a module citing nothing, or a document
+   nothing cites, from falling out of the reader altogether — they are listed
+   where they belong, and they open. */
 
 var fold = {}, qfold = {};           // node id -> collapsed, once the reader says so
-var PARENT = {};                     // leaf key -> the nodes above it, outermost first
+var PARENT = {};                     // key -> the nodes above it, outermost first
 var NODES = {};                      // node id -> node, as last rendered
 
-function tnode(id, label, cls) {
-  return { id: id, label: label, cls: cls, kids: [], ix: null, n: 0, has: false };
+/* A node is a place in the tree.  Some places are also things — a document, a
+   module — and those carry a `key` and can be selected like a leaf; `hit` is
+   whether the node's own name answers the filter, which is what lets a search
+   for a file name find the file and not only what is inside it. */
+function tnode(id, label, cls, key, hit) {
+  return { id: id, label: label, cls: cls, key: key || "", hit: hit !== false,
+           kids: [], ix: null, n: 0, has: false };
 }
 
 function tleaf(key, kd, nm, ct, has, sel, cls) {
@@ -245,9 +259,9 @@ function tleaf(key, kd, nm, ct, has, sel, cls) {
 
 /* find or make the child node: the tree is built by walking the rows once, in
    the order the index puts them, and every row deepens it where it has to */
-function child(parent, id, label, cls) {
+function child(parent, id, label, cls, key, hit) {
   var ix = parent.ix || (parent.ix = {});
-  if (!ix[id]) { ix[id] = tnode(id, label, cls); parent.kids.push(ix[id]); }
+  if (!ix[id]) { ix[id] = tnode(id, label, cls, key, hit); parent.kids.push(ix[id]); }
   return ix[id];
 }
 
@@ -269,21 +283,30 @@ function dirOf(parent, prefix, path) {
 
 function baseOf(path) { return path.slice(path.lastIndexOf("/") + 1); }
 
-/* ---- the three roots --------------------------------------------------- */
+/* ---- the two roots ----------------------------------------------------- */
 
 /* document, section, subsection, statement — the divisions the paper itself
    is written in */
 function paperRoot(q) {
-  var root = tnode("paper", "Paper → Lean", "root");
-  itemsOrdered().forEach(function (e) {
-    var key = e[0], it = e[1];
-    var hay = (it.label + " " + it.title + " " + it.section + " " + it.subsection).toLowerCase();
-    var leanHay = (BY[key] || []).map(function (l) { return l.file + " " + (l.decl || ""); }).join(" ").toLowerCase();
-    if (q && hay.indexOf(q) < 0 && leanHay.indexOf(q) < 0) return;
+  var root = tnode("paper", "Notes", "root");
+  // the documents first and in reading order, so that one holding no labelled
+  // statement at all is still a row: an empty document is a fact about the
+  // project, and an index that hides it answers the wrong question
+  DOCS.forEach(function (d) {
+    var hay = (d.id + " " + d.title + " " + (d.main || "")).toLowerCase();
     // the document by its id, not its title: the title is a line long, it is
     // in the bar above the page it names, and the id is what every citation
     // to this document is written with
-    var at = child(root, "paper/" + it.doc, it.doc, "doc");
+    child(root, "paper/" + d.id, d.id, "doc", "doc::" + d.id,
+          !q || hay.indexOf(q) >= 0);
+  });
+  itemsOrdered().forEach(function (e) {
+    var key = e[0], it = e[1];
+    var hay = (it.doc + " " + it.label + " " + it.title + " " +
+               it.section + " " + it.subsection).toLowerCase();
+    var leanHay = (BY[key] || []).map(function (l) { return l.file + " " + (l.decl || ""); }).join(" ").toLowerCase();
+    if (q && hay.indexOf(q) < 0 && leanHay.indexOf(q) < 0) return;
+    var at = child(root, "paper/" + it.doc, it.doc, "doc", "doc::" + it.doc);
     if (it.section) at = child(at, at.id + "/" + it.section, it.section, "sec");
     if (it.subsection) at = child(at, at.id + "/" + it.subsection, it.subsection, "sec");
     var ct = (BY[key] || []).length;
@@ -293,12 +316,16 @@ function paperRoot(q) {
   return root;
 }
 
-/* directory, module, declaration — and only the declarations that carry a
-   citation, because this index exists to be walked from the machine side of
-   the correspondence */
+/* directory, module, declaration — every module, and under it the
+   declarations that carry a citation.  A module citing nothing has nothing
+   under it and is still a row: it is part of the development, and the gap is
+   the thing this reader exists to show. */
 function leanRoot(q) {
-  var root = tnode("lean", "Lean → Paper", "root");
+  var root = tnode("lean", "Lean", "root");
   LEAN.forEach(function (f) {
+    var p = f.path || f.name + ".lean";
+    var at = child(dirOf(root, "lean", p), "lean#" + f.name, baseOf(p), "file",
+                   "mod::" + f.name, !q || p.toLowerCase().indexOf(q) >= 0);
     var rows = [];
     var mk = f.name + "::⟨module⟩";
     if (BY_DECL[mk]) rows.push(["⟨module⟩", BY_DECL[mk].length, mk]);
@@ -314,9 +341,6 @@ function leanRoot(q) {
       var cited = (BY_DECL[r[2]] || []).map(function (l) { return l.label; }).join(" ");
       return (f.name + " " + r[0] + " " + cited).toLowerCase().indexOf(q) >= 0;
     });
-    if (!rows.length) return;
-    var p = f.path || f.name + ".lean";
-    var at = child(dirOf(root, "lean", p), "lean#" + f.name, baseOf(p), "file");
     rows.forEach(function (r) {
       at.kids.push(tleaf(r[2], r[0] === "⟨module⟩" ? "mod" : "decl", r[0],
                          r[1] || "·", r[1] > 0, state.sel === r[2]));
@@ -325,52 +349,26 @@ function leanRoot(q) {
   return root;
 }
 
-/* the two source trees as they sit on disk — the only index that does not go
-   through the correspondence, and the only one where two rows are open at
-   once, one per page.
-
-   Which file each page is showing is worth saying whichever index is being
-   read in, so those two rows are marked in every mode — but marked as *open*,
-   not as selected.  With the three indexes on screen together, one selection
-   is the reader's place and a second one would be a lie about where they
-   are. */
-function filesRoot(q) {
-  var root = tnode("files", "Files", "root");
-  var here = state.mode === "files";
-  var papers = child(root, "files/papers", "papers", "dir");
-  DOCS.forEach(function (d) {
-    if (q && (d.id + " " + d.title + " " + (d.main || "")).toLowerCase().indexOf(q) < 0) return;
-    var s = DOCSTAT[d.id], key = "paper::" + d.id;
-    papers.kids.push(tleaf(key, d.id, d.title, s.items, s.linked > 0,
-                           here && state.sel === key,
-                           state.fdoc === d.id ? "file open" : "file"));
-  });
-  var lean = child(root, "files/lean", "lean", "dir");
-  LEAN.forEach(function (f) {
-    var p = f.path || f.name + ".lean", key = "lean::" + f.name;
-    if (q && p.toLowerCase().indexOf(q) < 0) return;
-    dirOf(lean, "files/lean", p).kids.push(
-      tleaf(key, "lean", baseOf(p), f.lines.toLocaleString(),
-            (BY_FILE[f.name] || 0) > 0, here && state.sel === key,
-            state.ffile === f.name ? "file open" : "file"));
-  });
-  return root;
-}
-
 /* ---- counting, and the way back ---------------------------------------- */
 
-/* Leaf counts, and the path down to every leaf: a selection that arrives from
-   somewhere else — a chip in a header bar, a deep link, a rebuild — has to be
-   able to unfold its own way back into view.  Nodes that came out empty are
-   dropped here rather than guarded against at every push: a filter matching
-   nothing in a directory should not leave the directory behind. */
+/* Leaf counts, and the path down to everything selectable: a selection that
+   arrives from somewhere else — a chip in a header bar, a deep link, a
+   rebuild — has to be able to unfold its own way back into view.
+
+   Empty nodes are dropped here rather than guarded against at every push: a
+   filter matching nothing in a directory should not leave the directory
+   behind.  Whether to keep a node is not the same question as how much is
+   under it — a file whose own name answered the filter is itself the match,
+   and it stays with nothing under it — so `keep` is carried separately from
+   the count, and a directory holding one such file stays for it. */
 function tally(nd, above) {
   var here = above.concat([nd.id]), kids = [];
   nd.n = 0; nd.has = false;
+  if (nd.key) PARENT[nd.key] = above;
   nd.kids.forEach(function (k) {
     if (!k.leaf) {
       tally(k, here);
-      if (!k.n) return;
+      if (!k.keep) return;
     } else {
       PARENT[k.key] = here;
     }
@@ -379,10 +377,11 @@ function tally(nd, above) {
     kids.push(k);
   });
   nd.kids = kids;
+  nd.keep = kids.length > 0 || !!(nd.key && nd.hit);
 }
 
 function railRoots(q) {
-  var roots = [paperRoot(q), leanRoot(q), filesRoot(q)];
+  var roots = [paperRoot(q), leanRoot(q)];
   roots.forEach(function (r) { tally(r, []); });
   return roots;
 }
@@ -433,13 +432,25 @@ function foldStep(close) {
 
 function delay(ctr) { return "animation-delay:" + Math.min(ctr.n++ * 8, 260) + "ms"; }
 
+/* A node that is only a place folds when you click it, and the whole row is
+   the target.  A node that is also a file opens when you click it, and then
+   folding is what the twisty is for — the two things a file row can do are
+   worth one small target each rather than one ambiguous one. */
 function nodeHTML(nd, depth, ctr) {
   NODES[nd.id] = nd;
   var open = isOpen(nd);
   var h = '<div class="row nd ' + nd.cls + (open ? " open" : "") + (nd.has ? " has" : "") +
     (nd.cls === "root" && nd.id === state.mode ? " cur" : "") +
-    '" data-fold="' + esc(nd.id) + '" style="--d:' + depth + ";" + delay(ctr) + '">' +
-    '<span class="tw"></span><span class="nm">' + esc(nd.label) + "</span>" +
+    (nd.key && state.sel === nd.key ? " sel" : "") +
+    (nd.kids.length ? "" : " bare") +
+    (nd.key ? '" data-key="' + esc(nd.key) + '" data-open="' + esc(nd.id)
+            : '" data-fold="' + esc(nd.id)) +
+    '" style="--d:' + depth + ";" + delay(ctr) + '">' +
+    // a file with nothing under it draws no twisty and swallows no click: the
+    // whole row is the file, because folding it would fold nothing
+    '<span class="tw"' + (nd.key && nd.kids.length ? ' data-fold="' + esc(nd.id) + '"' : "") +
+    "></span>" +
+    '<span class="nm">' + esc(nd.label) + "</span>" +
     '<span class="ct">' + nd.n + "</span></div>";
   if (!open) return h;
   nd.kids.forEach(function (k) {
@@ -463,24 +474,26 @@ function buildRail(show) {
   if (!M) return;
   PARENT = {}; NODES = {};
   var roots = railRoots(state.q.toLowerCase());
-  if (show !== false) {
-    reveal(state.sel);
-    if (state.mode === "files") { reveal("paper::" + state.fdoc); reveal("lean::" + state.ffile); }
-  }
+  if (show !== false) reveal(state.sel);
   var ctr = { n: 0 }, html = "";
   roots.forEach(function (r) {
     // an index a filter found nothing in is not worth a line of its own; one
     // that is simply empty in this build still is, or the reader would be
-    // looking for a third index that never appears
-    if (state.q && !r.n) return;
+    // looking for an index that never appears
+    if (state.q && !r.keep) return;
     html += nodeHTML(r, 0, ctr);
   });
   railBody.innerHTML = html || '<div class="norow">no match</div>';
   railBody.querySelectorAll("[data-fold]").forEach(function (el) {
-    el.onclick = function () { toggleFold(el.dataset.fold); };
+    el.onclick = function (ev) { ev.stopPropagation(); toggleFold(el.dataset.fold); };
   });
-  railBody.querySelectorAll(".itm").forEach(function (el) {
-    el.onclick = function () { select(el.dataset.key); };
+  railBody.querySelectorAll("[data-key]").forEach(function (el) {
+    el.onclick = function () {
+      // opening a file shows what is in it: the row unfolds rather than
+      // opening a page whose contents the reader is left to guess at
+      if (el.dataset.open) foldMap()[el.dataset.open] = false;
+      select(el.dataset.key);
+    };
   });
 }
 
@@ -650,7 +663,6 @@ function paperShow(keys, focus) {
   var it = TEX[keys[focus]];
   if (!it) return Promise.resolve();
   state.marked = keys;               // these carry their own band; no overlay
-  state.fdoc = it.doc;               // what this page holds, for the file index
   paperHeadShow(keys, focus);
 
   /* only the focused document can be shown at once */
@@ -760,7 +772,6 @@ function leanHeadShow(keys, focus, groups, total) {
 /* show one module, banding every cited declaration it holds */
 function leanShow(keys, focus, groups, total) {
   var fname = keys[focus].split("::")[0];
-  state.ffile = fname;               // what this page holds, for the file index
   leanHeadShow(keys, focus, groups, total);
 
   var same = keys.filter(function (k) { return k.split("::")[0] === fname; });
@@ -799,7 +810,6 @@ function selectPaper(key) {
       "Both are findings: this pane is the gap report." +
       "</div></div>";
     LeanView.forget();
-    state.ffile = null;              // this page holds no module at all
     return opened;
   }
   leanShow(keys, 0, groups, links.length);
@@ -828,13 +838,14 @@ function selectLean(key) {
   return paperShow(cited, 0);
 }
 
-/* ---- the file index ---------------------------------------------------- */
+/* ---- a whole file ------------------------------------------------------ */
 
-/* The two directional modes each drive both pages from one selection.  This
-   one drives one page at a time: pick a document, the left page opens it whole;
-   pick a module, the right page opens that.  Nothing is banded, because nothing
-   was selected — and the pair on screen is whatever the reader put there, which
-   is the one thing the correspondence cannot arrange for them. */
+/* The rest of this file answers "where is this one statement, or this one
+   declaration".  A file row asks something simpler: show me this, all of it.
+   One page moves and the other is left alone — nothing was selected *inside*
+   the file, so there is nothing for the other page to answer with, and the
+   pair on screen becomes whatever the reader put there.  That pairing is the
+   one thing the correspondence cannot arrange for them. */
 
 function docFileHead(id) {
   var d = DOC[id], s = DOCSTAT[id];
@@ -866,14 +877,21 @@ function moduleFileHead(name) {
   return h;
 }
 
+/* what the left page was last asked for — not the same as what it is showing,
+   which is only true once the PDF has been parsed, and not the same as the
+   selection either, since a document can be opened beside a selection made on
+   the other side */
+var ASKED = null;
+
 function showDocument(id) {
+  if (!DOC[id]) return Promise.resolve();
   var moved = PDFView.doc() !== id;
-  state.fdoc = id;
   state.marked = [];
+  ASKED = id;
   rhead.innerHTML = docFileHead(id);
   wireZoom(rhead);
   return openPDF(id, located(id)).then(function (ok) {
-    if (!ok || state.mode !== "files" || state.fdoc !== id) return;
+    if (!ok || ASKED !== id) return;
     PDFView.clear();                       // a file is open, no item is selected
     PDFView.repaintMarks();
     if (moved) PDFView.top();
@@ -883,11 +901,11 @@ function showDocument(id) {
 }
 
 function showModule(name) {
+  if (!FILE[name]) return;
   var moved = LeanView.file() !== name;
-  state.ffile = name;
   vhead.innerHTML = moduleFileHead(name);
   vhead.querySelectorAll("[data-mod]").forEach(function (el) {
-    el.onclick = function () { select("lean::" + el.dataset.mod); };
+    el.onclick = function () { select("mod::" + el.dataset.mod); };
   });
   LeanView.load(name, FILE[name].text);
   LeanView.clear();
@@ -895,29 +913,7 @@ function showModule(name) {
   wire(verso);
 }
 
-function selectFiles(key) {
-  var cut = key.indexOf("::");
-  var what = key.slice(0, cut), id = key.slice(cut + 2);
-  if (what === "paper") return showDocument(id);
-  showModule(id);
-  return Promise.resolve();
-}
-
-/* entering the mode moves no scroll position: whatever the two pages were
-   showing is what the index opens on, unless a key names one of them */
-function enterFiles(key) {
-  var want = key ? key.slice(0, key.indexOf("::")) : "";
-  var id = key ? key.slice(key.indexOf("::") + 2) : "";
-  var d0 = DOCS[0] ? DOCS[0].id : null, f0 = LEAN[0] ? LEAN[0].name : null;
-  state.fdoc = (want === "paper" ? id : null) || state.fdoc || PDFView.doc() || d0;
-  state.ffile = (want === "lean" ? id : null) || state.ffile || LeanView.file() || f0;
-  var opened = state.fdoc ? showDocument(state.fdoc) : Promise.resolve();
-  if (state.ffile) showModule(state.ffile);
-  state.sel = key || "paper::" + state.fdoc;
-  buildRail();
-  location.hash = encodeURIComponent(state.sel);
-  return opened;
-}
+/* ---- selecting --------------------------------------------------------- */
 
 /* The key says which index it belongs to, so nothing has to be put into a mode
    before it can be selected: a chip in a header bar, a deep link and a row of
@@ -925,20 +921,17 @@ function enterFiles(key) {
 function select(key) {
   if (!M) return Promise.resolve();
   var m = modeOf(key);
-  if (m && m !== state.mode) {
-    state.mode = m;
-    if (m === "files") return enterFiles(key);
-  }
+  if (m) state.mode = m;
   state.sel = key;
   expand = {};                       // a new selection, a new set of neighbours
   var opened;
-  if (state.mode === "paper") opened = selectPaper(key);
-  else if (state.mode === "files") opened = selectFiles(key);
-  else opened = selectLean(key);
+  if (key.indexOf("doc::") === 0) opened = showDocument(key.slice(5));
+  else if (key.indexOf("mod::") === 0) showModule(key.slice(5));
+  else opened = state.mode === "paper" ? selectPaper(key) : selectLean(key);
   wire(verso);
   buildRail();
   location.hash = encodeURIComponent(key);
-  var sel = railBody.querySelector('.itm[data-key="' + key + '"]');
+  var sel = railBody.querySelector('[data-key="' + key + '"]');
   if (sel) sel.scrollIntoView({ block: "nearest" });
   return opened || Promise.resolve();
 }
@@ -963,14 +956,15 @@ function wire(root) {
 
 /* ---- modes ------------------------------------------------------------- */
 
-/* which index a key belongs to — the file index prefixes its own, so the three
-   key spaces stay disjoint and a deep link picks its own tab */
+/* which index a key belongs to.  A statement is keyed by its document and
+   label, a declaration by its module and name, and a whole file says so in
+   front — so the key spaces are disjoint and a deep link picks its own index.
+   The `doc::`/`mod::` forms are checked against the manifest rather than
+   trusted, since a document could be called `doc` and own a label. */
 function modeOf(k) {
   if (!k) return null;
-  var cut = k.indexOf("::");
-  var head = cut < 0 ? "" : k.slice(0, cut), rest = k.slice(cut + 2);
-  if (head === "paper" && DOC[rest]) return "files";
-  if (head === "lean" && FILE[rest]) return "files";
+  if (k.indexOf("doc::") === 0 && DOC[k.slice(5)]) return "paper";
+  if (k.indexOf("mod::") === 0 && FILE[k.slice(5)]) return "lean";
   if (TEX[k]) return "paper";
   if (BY_DECL[k] || DECL[k]) return "lean";
   return null;
@@ -982,18 +976,22 @@ function modeOf(k) {
    The index already answers this — it is everything reachable in the current
    mode, in the order the mode puts it — so it is asked rather than a second
    ordering being written here.  The tree it is asked of is the unfiltered
-   one: what is folded away, or filtered out, is still in the build. */
+   one: what is folded away, or filtered out, is still in the build.
+
+   A leaf is preferred to a file row: a statement or a declaration drives both
+   pages, and a build should not open onto one page and an empty other. */
 function firstKey() {
   var root = null;
   railRoots("").forEach(function (r) { if (r.id === state.mode) root = r; });
-  var found = null;
+  var found = null, file = null;
   (function walk(nd) {
+    if (nd.key && !file) file = nd.key;
     nd.kids.forEach(function (k) {
       if (found) return;
       if (k.leaf) found = k.key; else walk(k);
     });
   })(root || { kids: [] });
-  return found;
+  return found || file;
 }
 
 /* =========================================================================
@@ -1028,7 +1026,7 @@ function stamped() {
    scroll positions, and the zoom */
 function snapshot() {
   return { mode: state.mode, sel: state.sel, q: state.q, all: state.all,
-           clean: state.clean, proof: state.proof, fdoc: state.fdoc, ffile: state.ffile,
+           clean: state.clean, proof: state.proof,
            pdf: rscroll ? rscroll.scrollTop : 0, lean: vscroll ? vscroll.scrollTop : 0,
            scale: PDFView.scale(), fit: PDFView.fitting() };
 }
@@ -1038,8 +1036,6 @@ function snapshot() {
    is said out loud and stepped back from, never thrown. */
 function restore(s) {
   state.q = s.q; state.proof = s.proof;
-  state.fdoc = DOC[s.fdoc] ? s.fdoc : null;
-  state.ffile = FILE[s.ffile] ? s.ffile : null;
   state.mode = s.mode;
   if (state.all !== s.all) toggleAll(s.all);
   if (state.clean !== s.clean) toggleClean(s.clean);
@@ -1057,7 +1053,7 @@ function restore(s) {
     key = fallback;
   }
 
-  var opened = state.mode === "files" ? enterFiles(key) : select(key);
+  var opened = select(key);
   return Promise.resolve(opened).then(function () {
     /* after the layout the new manifest asked for, not before it: the pages
        are what the scroll offsets are measured against.  Selecting scrolled
@@ -1182,16 +1178,26 @@ function renderStats() {
     '<div class="stat"><b>' + (s.unresolved || 0) + "</b>dangling</div>";
 }
 
+/* A file row moves one page and leaves the other alone, which is what reading
+   wants — but a page arrived at by deep link would then open with one half
+   blank, and a blank half says nothing at all.  So the first thing shown is
+   made to be two things. */
+function fillPanes() {
+  var opened = Promise.resolve();
+  if (!PDFView.doc() && DOCS[0]) opened = showDocument(DOCS[0].id);
+  if (!LeanView.file() && LEAN[0]) showModule(LEAN[0].name);
+  return opened;
+}
+
 /* the hash decides the mode, and the mode decides what opens when it does not */
 function start(key) {
   state.mode = modeOf(key) || "paper";
-  if (state.mode === "files") return enterFiles(key);
   if (!modeOf(key)) key = firstKey();
   if (!key) {
     note("this build holds no items to read", "err");
     return Promise.resolve();
   }
-  return select(key);
+  return Promise.resolve(select(key)).then(fillPanes);
 }
 
 /* ---- help -------------------------------------------------------------- */
@@ -1238,20 +1244,21 @@ function helpHTML() {
        row("esc", "close this, or leave Clean") +
        "</table>";
 
-  h += "<h3>the three indexes</h3>" +
-       "<p>They are the three roots of the tree on the left, and they fold. " +
-       "You do not switch between them: picking a row is what says which one " +
-       "you are reading in, and the root it belongs to is marked.</p><ul>" +
-       "<li><b>Paper&rarr;Lean</b> — document, section, statement. Pick a " +
-       "statement; the right page opens the module that cites it, scrolled to " +
-       "the declaration and banded.</li>" +
-       "<li><b>Lean&rarr;Paper</b> — directory, module, declaration, and only " +
-       "the declarations that carry a citation. Pick one; the paper marks " +
-       "every statement it claims to be.</li>" +
-       "<li><b>Files</b> — the two source trees as they sit on disk, the only " +
-       "index that does not go through the correspondence. Modules are in " +
-       "<i>import order</i>, so the tree reads as the development is built up." +
-       "</li></ul>";
+  h += "<h3>the two indexes</h3>" +
+       "<p>They are the two roots of the tree on the left, and it folds. You " +
+       "do not switch between them: picking a row is what says which one you " +
+       "are reading in, and the root it belongs to is marked. A row that " +
+       "stands for a <i>file</i> — a document, a module — opens it whole, " +
+       "with nothing banded; click its triangle to fold it instead.</p><ul>" +
+       "<li><b>Notes</b> — document, section, statement. Pick a statement; " +
+       "the right page opens the module that cites it, scrolled to the " +
+       "declaration and banded.</li>" +
+       "<li><b>Lean</b> — directory, module, declaration, and under each " +
+       "module the declarations that carry a citation. Pick one; the paper " +
+       "marks every statement it claims to be. Modules are in <i>import " +
+       "order</i>, so the tree reads as the development is built up — and a " +
+       "module that cites nothing is still listed, because that gap is what " +
+       "this reader exists to show.</li></ul>";
 
   h += "<h3>how the link is made</h3>" +
        "<p>A comment in the formal sources names a statement of the paper, by " +
@@ -1343,15 +1350,15 @@ function boot() {
     else if (e.key === "Escape") {
       if (!$("#help").hidden) toggleHelp(false); else toggleClean(false);
     }
-    /* j and k walk the rows that are on screen, which is now every unfolded
-       row of all three indexes rather than the rows of one of them: the
-       selection crosses from one index into the next, and the key it lands on
-       is what says which index that is.  With the selected row folded away
-       there is nowhere to step from, so a step starts at the end it came
-       from. */
+    /* j and k walk every row on screen that can be opened — statements,
+       declarations, and the document and module rows themselves — across both
+       indexes rather than within one of them: the selection crosses from one
+       index into the next, and the key it lands on is what says which index
+       that is.  With the selected row folded away there is nowhere to step
+       from, so a step starts at the end it came from. */
     else if (e.key === "j" || e.key === "k") {
       var down = e.key === "j";
-      var all = [].slice.call(railBody.querySelectorAll(".itm"));
+      var all = [].slice.call(railBody.querySelectorAll("[data-key]"));
       var i = all.findIndex(function (el) { return el.dataset.key === state.sel; });
       if (i < 0) i = down ? -1 : all.length;
       var nx = all[Math.max(0, Math.min(all.length - 1, i + (down ? 1 : -1)))];

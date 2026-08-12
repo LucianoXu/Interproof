@@ -159,31 +159,37 @@ Full reference: **[docs/config.md](docs/config.md)**.
 
 ## Reading the page
 
-The index on the left is one tree with three roots, and it folds. There is no
-mode to set first: picking a row is what says which of the three you are
-reading in, and the root it belongs to is marked.
+The index on the left is one tree with two roots — **Notes** and **Lean**, the
+written side and the machine side — and it folds. There is no mode to set
+first: picking a row is what says which of the two you are reading in, and the
+root it belongs to is marked.
 
-- **Paper → Lean** (default): document, section, statement. Pick a statement,
-  get the module that cites it. Other declarations citing the same statement
-  are banded dimly and named in the strip above.
-- **Lean → Paper**: directory, module, declaration — the declarations that
-  carry a citation. Pick one, and the paper marks every statement it cites at
-  once, focused one first.
-- **Files**: the two source trees as they sit on disk — the one index that does
-  not go through the correspondence. It is how you put an arbitrary paper
-  beside an arbitrary module, which is the pairing the citations cannot arrange
-  for you. Modules are in **import order**, not alphabetical: alphabetical is
-  the file system's order and says nothing about how a development is built up.
+- **Notes**: document, section, statement. Pick a statement, get the module
+  that cites it. Other declarations citing the same statement are banded dimly
+  and named in the strip above.
+- **Lean**: directory, module, declaration — under each module, the
+  declarations that carry a citation. Pick one, and the paper marks every
+  statement it cites at once, focused one first. Modules are in **import
+  order**, not alphabetical: alphabetical is the file system's order and says
+  nothing about how a development is built up.
+- **A file row opens the file.** A document row opens the whole PDF, a module
+  row the whole module, neither banded because nothing was selected inside
+  them — one page moves and the other is left alone, which is how you put an
+  arbitrary paper beside an arbitrary module. It is also why a module that
+  cites nothing, or a document nothing cites, is still listed and still opens:
+  the tree is the source tree, not only the part of it the correspondence
+  reaches. Click the triangle to fold such a row instead of opening it.
 - **References**, above both pages: `cites` / `cited by` for a statement,
   `uses` / `used by` for a declaration — each direction on its own row, because
   they answer different questions.
 - **Formalized** (`a`): every mechanized statement marked in the paper at once.
   A gap reads as a gap.
 - **Clean** (`c`): the apparatus put away, leaving the two documents.
-- `/` filter — it searches all three indexes at once and shows what it found in
-  each · `j`/`k` move · `h`/`l` fold and unfold the branch you are in ·
-  `a` formalized · `c` clean · the URL hash deep-links an item, unfolding the
-  tree to it · `\Cref` links inside the PDF are followable.
+- `/` filter — it searches both indexes at once, by statement, by declaration
+  and by file name, and shows what it found in each · `j`/`k` move · `h`/`l`
+  fold and unfold the branch you are in · `a` formalized · `c` clean · the URL
+  hash deep-links an item, unfolding the tree to it · `\Cref` links inside the
+  PDF are followable.
 
 ## Publishing
 

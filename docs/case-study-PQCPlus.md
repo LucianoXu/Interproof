@@ -165,21 +165,23 @@ precondition.
 
 ## Reading the page
 
-- **Paper → Lean** (default): pick a statement; the right page opens the module
-  that cites it, scrolled to the declaration and banded. Other declarations
-  citing the same statement are banded dimly, and named in the strip above; a
-  name from another module switches the file.
-- **Lean → Paper**: pick a declaration; the left page marks every paper item it
-  cites at once, focused one first.
-- **Files**: the third index, and the only one that does not go through the
-  correspondence — the sources as they sit on disk. The papers as a flat list,
-  the Lean modules in their directory tree. Picking a document opens it whole
-  on the left, picking a module opens it whole on the right, nothing banded,
-  each side set independently. Two directional modes drive both pages from one
-  selection; this one lets the reader put an arbitrary paper beside an
-  arbitrary module, which is the one pairing the citations cannot arrange.
-  The modules are in import order, and what a module imports is named above
-  the pane and followable.
+The index on the left is one tree with two roots, **Notes** and **Lean**, and
+it folds; picking a row is what says which of the two you are reading in.
+
+- **Notes**: document, section, statement. Pick a statement; the right page
+  opens the module that cites it, scrolled to the declaration and banded. Other
+  declarations citing the same statement are banded dimly, and named in the
+  strip above; a name from another module switches the file.
+- **Lean**: directory, module, declaration. Pick a declaration; the left page
+  marks every paper item it cites at once, focused one first. The modules are
+  in import order, and what a module imports is named above the pane and
+  followable.
+- **A file row opens the file**: a document row opens it whole on the left, a
+  module row whole on the right, nothing banded, each side set independently.
+  A selection drives both pages from one row; this lets the reader put an
+  arbitrary paper beside an arbitrary module, which is the one pairing the
+  citations cannot arrange. It is also what keeps a module citing nothing —
+  and this development has plenty — listed where it belongs, and openable.
 - **References**, above each page and on both sides: what the thing you are
   reading rests on, and what rests on it — `cites` / `cited by` for a paper
   item, `uses` / `used by` for a declaration. The two directions are separate

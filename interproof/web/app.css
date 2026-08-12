@@ -202,15 +202,20 @@ header {
 /* only on the rows that stand for something to read: a branch is a place, and
    a place does not carry citations — everything under it does */
 .itm.has::before { background: var(--rust); width: 2px; }
-.itm.sel::before { background: var(--ink); width: 2px; }
+.row.sel::before { background: var(--ink); width: 2px; }
 
 .tw { flex: none; width: 9px; align-self: stretch; position: relative; }
+/* on a row that opens a file the twisty is the only thing that folds, so it
+   takes a target bigger than the triangle it draws */
+.nd[data-key] > .tw::after { content: ""; position: absolute; inset: -4px -4px -4px -6px; }
 .nd > .tw::before {
   content: ""; position: absolute; left: 0; top: 5px;
   border: 3.5px solid transparent; border-left-color: var(--ink-faint);
   transform-origin: 1.5px 3.5px; transition: transform .12s ease;
 }
 .nd.open > .tw::before { transform: rotate(90deg); }
+/* a file the correspondence never reaches has nothing under it to fold */
+.nd.bare > .tw::before { display: none; }
 
 .nm {
   font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft);
@@ -232,6 +237,9 @@ header {
   font-size: 11px; letter-spacing: .02em; text-transform: none;
 }
 .nd.file > .nm { color: var(--ink-soft); }
+/* a document or a module: a place in the tree, and a thing that opens */
+.nd.sel { background: var(--paper-hi); }
+.nd.sel > .nm { color: var(--ink); font-weight: 600; }
 
 /* the three indexes, at the top of their own branch.  They stay put while
    what is under them scrolls: which index a row belongs to is the one thing
@@ -261,14 +269,6 @@ header {
 .itm.sel { background: var(--paper-hi); }
 .itm.sel .nm { color: var(--ink); font-weight: 600; }
 .itm.has .ct { color: var(--rust-soft); }
-
-/* the file index: a row is a source file rather than an item, and two of them
-   are open at once — one per page.  Being open is not being selected, and it
-   is marked more quietly: the reader's place is somewhere else. */
-.itm.file .nm { color: var(--ink-soft); }
-.itm.open .nm { color: var(--ink); }
-.itm.open:not(.sel)::before { background: var(--ink-faint); width: 2px; }
-.itm.file.sel .nm { color: var(--ink); }
 
 .norow {
   font-family: var(--mono); font-size: 9.5px; letter-spacing: .13em;
