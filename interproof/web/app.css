@@ -28,7 +28,10 @@
   --verd-dim:   #7d9268;
 
   --serif: "Newsreader", Palatino, "Palatino Linotype", Georgia, serif;
-  --mono:  "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+  /* Plex for the latin, JuliaMono for everything a formalization is written
+     in that the latin subset stops short of.  Same 0.6em advance, so the two
+     interleave without breaking the grid a `pre` is read on. */
+  --mono:  "IBM Plex Mono", "JuliaMono", "SF Mono", Menlo, Consolas, monospace;
 
   --rail: 268px;
   --h: 46px;
@@ -110,10 +113,9 @@ header {
 .hspacer { flex: 1; }
 
 /* --- the header controls ------------------------------------------------
-   A square target with an icon in it, and the name in a tooltip: four icons
-   read as a set of controls where four words read as a line of prose.  The
-   name is still in the DOM — some variants show it — and always in the
-   tooltip, because an icon nobody can name is worse than a word. */
+   An icon, its name, and a target around both: four of these read as a set of
+   controls where four bare words read as a line of prose.  The name is in the
+   tooltip as well, with the key that does the same thing. */
 .hbtn {
   position: relative;
   display: inline-flex; align-items: center; gap: 7px;
