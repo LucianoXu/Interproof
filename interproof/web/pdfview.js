@@ -248,13 +248,45 @@ function band(rect, cls) {
    formalized, all at once.  They outlive the selection bands — `clear()` and
    `show()` do not touch them — and they are the one mark the reader can click,
    so the page itself becomes an index into the machine side. */
+/* The hint: one floating label, told what it is over.  A native `title`
+   appears a second late in the browser's grey, which reads as nothing being
+   there at all; this one answers the moment the pointer arrives, in the dark
+   green that is the overlay's own colour.  There is exactly one of it — the
+   pointer is in one place — and the marks stack innermost-on-top, so the
+   hint always names the deepest mark under the pointer, never the statement
+   wrapped around it. */
+var hint = null;
+function hideHint() {
+  if (hint) hint.remove();
+  hint = null;
+}
+function showHint(el, text) {
+  hideHint();
+  if (!text) return;
+  hint = document.createElement("div");
+  hint.className = "covhint";
+  hint.textContent = text;
+  el.parentNode.appendChild(hint);
+  // above the mark, and below it when the mark opens the page: the label must
+  // never sit under the pointer, or it would flicker against its own mark.
+  // Slid left when the mark sits near the page's edge — a label cut by the
+  // sheet reads as a broken one.
+  var left = Math.min(el.offsetLeft,
+                      el.parentNode.clientWidth - hint.offsetWidth - 2);
+  hint.style.left = Math.max(left, 2) + "px";
+  var above = el.offsetTop - hint.offsetHeight - 3;
+  hint.style.top = (above > 2 ? above : el.offsetTop + el.offsetHeight + 3) + "px";
+}
+
 function paintOverlay() {
+  hideHint();
   host.querySelectorAll(".covmark").forEach(function (el) { el.remove(); });
   if (!cur || !marksOf) return;
   /* Marks nest: an anchor's rectangle sits inside its statement's.  Painted
      in arbitrary order, whichever came last would take the pointer for both.
      Large first, so the innermost is always on top — hover lights the deepest
-     mark alone, and a click on a clause opens the clause. */
+     mark alone, its hint names that one, and a click on a clause opens the
+     clause. */
   var area = function (r) {
     return ((r.end_page || r.page) - r.page) * 1e6 + (r.bottom - r.top) * r.w;
   };
@@ -262,8 +294,9 @@ function paintOverlay() {
     .sort(function (a, b) { return area(b.rect) - area(a.rect); })
     .forEach(function (e) {
       band(e.rect, "covmark").forEach(function (el) {
-        el.title = e.title || "";
         el.onclick = function () { if (onPick) onPick(e.key); };
+        el.onmouseenter = function () { showHint(el, e.title || ""); };
+        el.onmouseleave = hideHint;
       });
     });
 }
