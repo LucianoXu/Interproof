@@ -184,9 +184,6 @@ function page(ctx) {
   if (dl) dl.textContent = "Download";
   var q = root.querySelector("#search");
   if (q) q.removeAttribute("value");
-  root.querySelectorAll(".modes button").forEach(function (b, i) {
-    if (i === 0) b.classList.add("on");           // the mode the page opens in
-  });
   return Promise.resolve("<!doctype html>\n" + root.outerHTML);
 }
 

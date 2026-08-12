@@ -217,115 +217,268 @@ function docStats() {
   return out;
 }
 
-/* the Lean sources by directory — the file index mirrors the tree rather than
-   flattening it, because in a formalization the directory is the first thing
-   that says what a module is for.  Inside a directory the manifest's order is
-   kept, which is import order: alphabetical order is the file system's, and it
-   says nothing about how the development is built up. */
-function leanTree() {
-  var byDir = {}, dirs = [];
-  LEAN.forEach(function (f) {
-    var p = f.path || f.name + ".lean";
-    var cut = p.lastIndexOf("/");
-    var dir = cut < 0 ? "" : p.slice(0, cut);
-    if (!byDir[dir]) { byDir[dir] = []; dirs.push(dir); }
-    byDir[dir].push({ file: f, base: p.slice(cut + 1), depth: dir ? dir.split("/").length : 0 });
+/* =========================================================================
+   the index
+   =========================================================================
+
+   Three indexes, one tree.  They used to be three tabs — one visible at a
+   time, and the mode was something you set *before* you were allowed to
+   look — and the grouping each of them already had was flattened into
+   headings above runs of rows.  That grouping is a hierarchy: a statement
+   sits in a section of a document, a declaration in a module in a directory.
+   So the three are roots of one tree that folds, the groups are its levels,
+   and picking a row is what says which index you are reading in.  Fold the
+   two you are not using away and they stay folded; the one you are in still
+   opens at whatever you last selected. */
+
+var fold = {}, qfold = {};           // node id -> collapsed, once the reader says so
+var PARENT = {};                     // leaf key -> the nodes above it, outermost first
+var NODES = {};                      // node id -> node, as last rendered
+
+function tnode(id, label, cls) {
+  return { id: id, label: label, cls: cls, kids: [], ix: null, n: 0, has: false };
+}
+
+function tleaf(key, kd, nm, ct, has, sel, cls) {
+  return { leaf: true, key: key, kd: kd, nm: nm, ct: ct, has: has, sel: sel, cls: cls || "" };
+}
+
+/* find or make the child node: the tree is built by walking the rows once, in
+   the order the index puts them, and every row deepens it where it has to */
+function child(parent, id, label, cls) {
+  var ix = parent.ix || (parent.ix = {});
+  if (!ix[id]) { ix[id] = tnode(id, label, cls); parent.kids.push(ix[id]); }
+  return ix[id];
+}
+
+/* the directories of a source path, as nodes.  A formalization's directory is
+   the first thing that says what a module is for, so the tree is the one on
+   disk.  Inside a directory the manifest's order is kept, which is import
+   order: alphabetical order is the file system's, and it says nothing about
+   how the development is built up. */
+function dirOf(parent, prefix, path) {
+  var cut = path.lastIndexOf("/");
+  if (cut < 0) return parent;
+  var id = prefix, at = parent;
+  path.slice(0, cut).split("/").forEach(function (seg) {
+    id += "/" + seg;
+    at = child(at, id, seg, "dir");
   });
-  return dirs.map(function (d) { return { dir: d, files: byDir[d] }; });
+  return at;
+}
+
+function baseOf(path) { return path.slice(path.lastIndexOf("/") + 1); }
+
+/* ---- the three roots --------------------------------------------------- */
+
+/* document, section, subsection, statement — the divisions the paper itself
+   is written in */
+function paperRoot(q) {
+  var root = tnode("paper", "Paper → Lean", "root");
+  itemsOrdered().forEach(function (e) {
+    var key = e[0], it = e[1];
+    var hay = (it.label + " " + it.title + " " + it.section + " " + it.subsection).toLowerCase();
+    var leanHay = (BY[key] || []).map(function (l) { return l.file + " " + (l.decl || ""); }).join(" ").toLowerCase();
+    if (q && hay.indexOf(q) < 0 && leanHay.indexOf(q) < 0) return;
+    // the document by its id, not its title: the title is a line long, it is
+    // in the bar above the page it names, and the id is what every citation
+    // to this document is written with
+    var at = child(root, "paper/" + it.doc, it.doc, "doc");
+    if (it.section) at = child(at, at.id + "/" + it.section, it.section, "sec");
+    if (it.subsection) at = child(at, at.id + "/" + it.subsection, it.subsection, "sec");
+    var ct = (BY[key] || []).length;
+    at.kids.push(tleaf(key, KINDSHORT[it.kind] || it.kind.slice(0, 4),
+                       it.title || it.label, ct || "·", ct > 0, state.sel === key));
+  });
+  return root;
+}
+
+/* directory, module, declaration — and only the declarations that carry a
+   citation, because this index exists to be walked from the machine side of
+   the correspondence */
+function leanRoot(q) {
+  var root = tnode("lean", "Lean → Paper", "root");
+  LEAN.forEach(function (f) {
+    var rows = [];
+    var mk = f.name + "::⟨module⟩";
+    if (BY_DECL[mk]) rows.push(["⟨module⟩", BY_DECL[mk].length, mk]);
+    f.decls.forEach(function (d) {
+      var k = f.name + "::" + d.name;
+      // a declaration reached by following a reference has no citations of
+      // its own; it is still where the reader is, so the rail says so
+      if (BY_DECL[k]) rows.push([d.name, BY_DECL[k].length, k]);
+      else if (state.sel === k) rows.push([d.name, 0, k]);
+    });
+    rows = rows.filter(function (r) {
+      if (!q) return true;
+      var cited = (BY_DECL[r[2]] || []).map(function (l) { return l.label; }).join(" ");
+      return (f.name + " " + r[0] + " " + cited).toLowerCase().indexOf(q) >= 0;
+    });
+    if (!rows.length) return;
+    var p = f.path || f.name + ".lean";
+    var at = child(dirOf(root, "lean", p), "lean#" + f.name, baseOf(p), "file");
+    rows.forEach(function (r) {
+      at.kids.push(tleaf(r[2], r[0] === "⟨module⟩" ? "mod" : "decl", r[0],
+                         r[1] || "·", r[1] > 0, state.sel === r[2]));
+    });
+  });
+  return root;
+}
+
+/* the two source trees as they sit on disk — the only index that does not go
+   through the correspondence, and the only one where two rows are open at
+   once, one per page.
+
+   Which file each page is showing is worth saying whichever index is being
+   read in, so those two rows are marked in every mode — but marked as *open*,
+   not as selected.  With the three indexes on screen together, one selection
+   is the reader's place and a second one would be a lie about where they
+   are. */
+function filesRoot(q) {
+  var root = tnode("files", "Files", "root");
+  var here = state.mode === "files";
+  var papers = child(root, "files/papers", "papers", "dir");
+  DOCS.forEach(function (d) {
+    if (q && (d.id + " " + d.title + " " + (d.main || "")).toLowerCase().indexOf(q) < 0) return;
+    var s = DOCSTAT[d.id], key = "paper::" + d.id;
+    papers.kids.push(tleaf(key, d.id, d.title, s.items, s.linked > 0,
+                           here && state.sel === key,
+                           state.fdoc === d.id ? "file open" : "file"));
+  });
+  var lean = child(root, "files/lean", "lean", "dir");
+  LEAN.forEach(function (f) {
+    var p = f.path || f.name + ".lean", key = "lean::" + f.name;
+    if (q && p.toLowerCase().indexOf(q) < 0) return;
+    dirOf(lean, "files/lean", p).kids.push(
+      tleaf(key, "lean", baseOf(p), f.lines.toLocaleString(),
+            (BY_FILE[f.name] || 0) > 0, here && state.sel === key,
+            state.ffile === f.name ? "file open" : "file"));
+  });
+  return root;
+}
+
+/* ---- counting, and the way back ---------------------------------------- */
+
+/* Leaf counts, and the path down to every leaf: a selection that arrives from
+   somewhere else — a chip in a header bar, a deep link, a rebuild — has to be
+   able to unfold its own way back into view.  Nodes that came out empty are
+   dropped here rather than guarded against at every push: a filter matching
+   nothing in a directory should not leave the directory behind. */
+function tally(nd, above) {
+  var here = above.concat([nd.id]), kids = [];
+  nd.n = 0; nd.has = false;
+  nd.kids.forEach(function (k) {
+    if (!k.leaf) {
+      tally(k, here);
+      if (!k.n) return;
+    } else {
+      PARENT[k.key] = here;
+    }
+    nd.n += k.leaf ? 1 : k.n;
+    if (k.has) nd.has = true;
+    kids.push(k);
+  });
+  nd.kids = kids;
+}
+
+function railRoots(q) {
+  var roots = [paperRoot(q), leanRoot(q), filesRoot(q)];
+  roots.forEach(function (r) { tally(r, []); });
+  return roots;
+}
+
+/* ---- folding ----------------------------------------------------------- */
+
+/* A filter is a second opinion about what should be visible, and it should not
+   spend the folding the reader did: while one is typed the tree answers to
+   `qfold`, which is dropped when the filter is. */
+function foldMap() { return state.q ? qfold : fold; }
+
+function isOpen(nd) {
+  var m = foldMap();
+  if (nd.id in m) return !m[nd.id];
+  if (state.q) return true;
+  // the index you are reading in is the one that is open
+  return nd.cls === "root" ? nd.id === state.mode : true;
+}
+
+function toggleFold(id) {
+  var nd = NODES[id];
+  if (!nd) return;
+  foldMap()[id] = isOpen(nd);
+  buildRail(false);
+}
+
+/* unfold everything above a key, so that what is selected can be seen */
+function reveal(key) {
+  (PARENT[key] || []).forEach(function (id) { foldMap()[id] = false; });
+}
+
+/* one level of the branch the selection is in.  Closing takes the innermost
+   node that is open, opening takes the outermost that is not — so the two are
+   each other's undo, and a held key walks the branch out and back. */
+function foldStep(close) {
+  var path = (PARENT[state.sel] || []).slice();
+  if (close) path.reverse();
+  for (var i = 0; i < path.length; i++) {
+    var nd = NODES[path[i]];
+    if (!nd || isOpen(nd) !== close) continue;
+    foldMap()[nd.id] = close;
+    buildRail(false);
+    return;
+  }
 }
 
 /* ---- rail -------------------------------------------------------------- */
 
-function buildRail() {
+function delay(ctr) { return "animation-delay:" + Math.min(ctr.n++ * 8, 260) + "ms"; }
+
+function nodeHTML(nd, depth, ctr) {
+  NODES[nd.id] = nd;
+  var open = isOpen(nd);
+  var h = '<div class="row nd ' + nd.cls + (open ? " open" : "") + (nd.has ? " has" : "") +
+    (nd.cls === "root" && nd.id === state.mode ? " cur" : "") +
+    '" data-fold="' + esc(nd.id) + '" style="--d:' + depth + ";" + delay(ctr) + '">' +
+    '<span class="tw"></span><span class="nm">' + esc(nd.label) + "</span>" +
+    '<span class="ct">' + nd.n + "</span></div>";
+  if (!open) return h;
+  nd.kids.forEach(function (k) {
+    h += k.leaf ? leafHTML(k, depth + 1, ctr) : nodeHTML(k, depth + 1, ctr);
+  });
+  return h;
+}
+
+function leafHTML(k, depth, ctr) {
+  return '<div class="row itm' + (k.cls ? " " + k.cls : "") + (k.has ? " has" : "") +
+    (k.sel ? " sel" : "") + '" data-key="' + esc(k.key) +
+    '" style="--d:' + depth + ";" + delay(ctr) + '">' +
+    // the kind badge stands where a node's twisty stands: a leaf has nothing
+    // to fold, and the rail is 268px wide
+    '<span class="kd">' + esc(k.kd) + "</span>" +
+    '<span class="nm">' + esc(k.nm) + "</span>" +
+    '<span class="ct">' + esc(k.ct) + "</span></div>";
+}
+
+function buildRail(show) {
   if (!M) return;
-  var q = state.q.toLowerCase();
-  var html = "", n = 0;
-
-  if (state.mode === "paper") {
-    var lastGrp = null;
-    itemsOrdered().forEach(function (e) {
-      var key = e[0], it = e[1];
-      var hay = (it.label + " " + it.title + " " + it.section + " " + it.subsection).toLowerCase();
-      var leanHay = (BY[key] || []).map(function (l) { return l.file + " " + (l.decl || ""); }).join(" ").toLowerCase();
-      if (q && hay.indexOf(q) < 0 && leanHay.indexOf(q) < 0) return;
-      var grp = it.doc.toUpperCase() + " · " + (it.section || "");
-      if (grp !== lastGrp) { html += '<div class="grp">' + esc(grp) + "</div>"; lastGrp = grp; }
-      var ct = (BY[key] || []).length;
-      html += '<div class="itm' + (ct ? " has" : "") + (state.sel === key ? " sel" : "") +
-        '" data-key="' + key + '" style="animation-delay:' + Math.min(n * 8, 260) + 'ms">' +
-        '<div class="kd">' + (KINDSHORT[it.kind] || it.kind.slice(0, 4)) + "</div>" +
-        '<div class="nm">' + esc(it.title || it.label) + "</div>" +
-        '<div class="ct">' + (ct || "·") + "</div></div>";
-      n++;
-    });
-  } else if (state.mode === "files") {
-    /* one row per source file: the documents flat, the modules as they sit
-       on disk.  Nothing here depends on the correspondence — this is the
-       index for a reader who knows what file they want. */
-    var frow = function (key, kd, nm, ct, has, pad) {
-      var open = key === "paper::" + state.fdoc || key === "lean::" + state.ffile;
-      html += '<div class="itm file' + (has ? " has" : "") + (open ? " sel" : "") +
-        '" data-key="' + esc(key) + '" style="animation-delay:' + Math.min(n * 8, 260) + 'ms">' +
-        '<div class="kd">' + esc(kd) + "</div>" +
-        '<div class="nm"' + (pad ? ' style="padding-left:' + pad + 'px"' : "") + ">" +
-        esc(nm) + "</div>" +
-        '<div class="ct">' + esc(ct) + "</div></div>";
-      n++;
-    };
-
-    var docs = DOCS.filter(function (d) {
-      return !q || (d.id + " " + d.title + " " + (d.main || "")).toLowerCase().indexOf(q) >= 0;
-    });
-    if (docs.length) {
-      html += '<div class="grp">papers</div>';
-      docs.forEach(function (d) {
-        var s = DOCSTAT[d.id];
-        frow("paper::" + d.id, d.id, d.title, s.items, s.linked > 0, 0);
-      });
-    }
-    leanTree().forEach(function (g) {
-      var files = g.files.filter(function (r) {
-        return !q || (r.file.path || r.file.name).toLowerCase().indexOf(q) >= 0;
-      });
-      if (!files.length) return;
-      var sep = ' <span class="dim">/</span> ';
-      html += '<div class="grp">lean' +
-        (g.dir ? sep + esc(g.dir).split("/").join(sep) : "") + "</div>";
-      files.forEach(function (r) {
-        frow("lean::" + r.file.name, "lean", r.base,
-             r.file.lines.toLocaleString(), (BY_FILE[r.file.name] || 0) > 0, r.depth * 10);
-      });
-    });
-  } else {
-    LEAN.forEach(function (f) {
-      var rows = [];
-      var mk = f.name + "::⟨module⟩";
-      if (BY_DECL[mk]) rows.push(["⟨module⟩", BY_DECL[mk].length, mk]);
-      f.decls.forEach(function (d) {
-        var k = f.name + "::" + d.name;
-        // a declaration reached by following a reference has no citations of
-        // its own; it is still where the reader is, so the rail says so
-        if (BY_DECL[k]) rows.push([d.name, BY_DECL[k].length, k]);
-        else if (state.sel === k) rows.push([d.name, 0, k]);
-      });
-      rows = rows.filter(function (r) {
-        if (!q) return true;
-        var cited = (BY_DECL[r[2]] || []).map(function (l) { return l.label; }).join(" ");
-        return (f.name + " " + r[0] + " " + cited).toLowerCase().indexOf(q) >= 0;
-      });
-      if (!rows.length) return;
-      html += '<div class="grp">' + esc(f.name) + ".lean · " + f.lines + " lines</div>";
-      rows.forEach(function (r) {
-        html += '<div class="itm' + (r[1] ? " has" : "") + (state.sel === r[2] ? " sel" : "") +
-          '" data-key="' + r[2] + '" style="animation-delay:' + Math.min(n * 8, 260) + 'ms">' +
-          '<div class="kd">' + (r[0] === "⟨module⟩" ? "mod" : "decl") + "</div>" +
-          '<div class="nm">' + esc(r[0]) + "</div>" +
-          '<div class="ct">' + (r[1] || "·") + "</div></div>";
-        n++;
-      });
-    });
+  PARENT = {}; NODES = {};
+  var roots = railRoots(state.q.toLowerCase());
+  if (show !== false) {
+    reveal(state.sel);
+    if (state.mode === "files") { reveal("paper::" + state.fdoc); reveal("lean::" + state.ffile); }
   }
-  railBody.innerHTML = html || '<div class="grp">no match</div>';
+  var ctr = { n: 0 }, html = "";
+  roots.forEach(function (r) {
+    // an index a filter found nothing in is not worth a line of its own; one
+    // that is simply empty in this build still is, or the reader would be
+    // looking for a third index that never appears
+    if (state.q && !r.n) return;
+    html += nodeHTML(r, 0, ctr);
+  });
+  railBody.innerHTML = html || '<div class="norow">no match</div>';
+  railBody.querySelectorAll("[data-fold]").forEach(function (el) {
+    el.onclick = function () { toggleFold(el.dataset.fold); };
+  });
   railBody.querySelectorAll(".itm").forEach(function (el) {
     el.onclick = function () { select(el.dataset.key); };
   });
@@ -497,6 +650,7 @@ function paperShow(keys, focus) {
   var it = TEX[keys[focus]];
   if (!it) return Promise.resolve();
   state.marked = keys;               // these carry their own band; no overlay
+  state.fdoc = it.doc;               // what this page holds, for the file index
   paperHeadShow(keys, focus);
 
   /* only the focused document can be shown at once */
@@ -593,10 +747,7 @@ function leanHeadShow(keys, focus, groups, total) {
     el.onclick = function () { leanShow(keys, keys.indexOf(el.dataset.decl), groups, total); };
   });
   vhead.querySelectorAll("[data-use]").forEach(function (el) {
-    el.onclick = function () {
-      if (state.mode !== "lean") { state.mode = "lean"; syncModes(); }
-      select(el.dataset.use);
-    };
+    el.onclick = function () { select(el.dataset.use); };
   });
   vhead.querySelectorAll("[data-more]").forEach(function (el) {
     el.onclick = function () {
@@ -609,6 +760,7 @@ function leanHeadShow(keys, focus, groups, total) {
 /* show one module, banding every cited declaration it holds */
 function leanShow(keys, focus, groups, total) {
   var fname = keys[focus].split("::")[0];
+  state.ffile = fname;               // what this page holds, for the file index
   leanHeadShow(keys, focus, groups, total);
 
   var same = keys.filter(function (k) { return k.split("::")[0] === fname; });
@@ -647,6 +799,7 @@ function selectPaper(key) {
       "Both are findings: this pane is the gap report." +
       "</div></div>";
     LeanView.forget();
+    state.ffile = null;              // this page holds no module at all
     return opened;
   }
   leanShow(keys, 0, groups, links.length);
@@ -766,8 +919,16 @@ function enterFiles(key) {
   return opened;
 }
 
+/* The key says which index it belongs to, so nothing has to be put into a mode
+   before it can be selected: a chip in a header bar, a deep link and a row of
+   the tree all arrive here, and the mode follows what was picked. */
 function select(key) {
   if (!M) return Promise.resolve();
+  var m = modeOf(key);
+  if (m && m !== state.mode) {
+    state.mode = m;
+    if (m === "files") return enterFiles(key);
+  }
   state.sel = key;
   expand = {};                       // a new selection, a new set of neighbours
   var opened;
@@ -786,10 +947,7 @@ function wire(root) {
   root.querySelectorAll("[data-go]").forEach(function (el) {
     el.onclick = function (ev) {
       ev.stopPropagation();
-      var k = el.dataset.go;
-      if (!TEX[k]) return;
-      if (state.mode !== "paper") { state.mode = "paper"; syncModes(); }
-      select(k);
+      if (TEX[el.dataset.go]) select(el.dataset.go);
     };
   });
   root.querySelectorAll(".fold").forEach(function (b) {
@@ -804,22 +962,6 @@ function wire(root) {
 }
 
 /* ---- modes ------------------------------------------------------------- */
-
-function syncModes() {
-  document.querySelectorAll(".modes button").forEach(function (b) {
-    b.classList.toggle("on", b.dataset.mode === state.mode);
-  });
-}
-
-function setMode(m) {
-  if (!M || state.mode === m) return;
-  state.mode = m;
-  syncModes();
-  if (m === "files") { enterFiles(null); return; }
-  buildRail();
-  var first = railBody.querySelector(".itm");
-  if (first) select(first.dataset.key);
-}
 
 /* which index a key belongs to — the file index prefixes its own, so the three
    key spaces stay disjoint and a deep link picks its own tab */
@@ -837,13 +979,21 @@ function modeOf(k) {
 /* ---- the first entry of a mode ----------------------------------------- */
 
 /* Asked when the key that was being read is not in the manifest any more.
-   The rail already answers this — it is the list of everything reachable in
-   the current mode, in the order the mode puts it — so it is asked rather
-   than a second ordering being written here. */
+   The index already answers this — it is everything reachable in the current
+   mode, in the order the mode puts it — so it is asked rather than a second
+   ordering being written here.  The tree it is asked of is the unfiltered
+   one: what is folded away, or filtered out, is still in the build. */
 function firstKey() {
-  buildRail();
-  var first = railBody.querySelector(".itm");
-  return first ? first.dataset.key : null;
+  var root = null;
+  railRoots("").forEach(function (r) { if (r.id === state.mode) root = r; });
+  var found = null;
+  (function walk(nd) {
+    nd.kids.forEach(function (k) {
+      if (found) return;
+      if (k.leaf) found = k.key; else walk(k);
+    });
+  })(root || { kids: [] });
+  return found;
 }
 
 /* =========================================================================
@@ -891,7 +1041,6 @@ function restore(s) {
   state.fdoc = DOC[s.fdoc] ? s.fdoc : null;
   state.ffile = FILE[s.ffile] ? s.ffile : null;
   state.mode = s.mode;
-  syncModes();
   if (state.all !== s.all) toggleAll(s.all);
   if (state.clean !== s.clean) toggleClean(s.clean);
 
@@ -1036,9 +1185,7 @@ function renderStats() {
 /* the hash decides the mode, and the mode decides what opens when it does not */
 function start(key) {
   state.mode = modeOf(key) || "paper";
-  syncModes();
   if (state.mode === "files") return enterFiles(key);
-  buildRail();
   if (!modeOf(key)) key = firstKey();
   if (!key) {
     note("this build holds no items to read", "err");
@@ -1083,21 +1230,27 @@ function helpHTML() {
 
   h += "<h3>keys</h3><table class='hkeys'>" +
        row("/", "filter the index — also brings it back when it is hidden") +
-       row("j k", "move the selection") +
+       row("j k", "move the selection, down and up the rows on screen") +
+       row("h l", "fold the branch the selection is in, and unfold it") +
        row("a", "<b>Formalized</b>: mark every statement with a counterpart, at once") +
        row("c", "<b>Clean</b>: put the apparatus away, leaving the two documents") +
        row("?", "this page") +
        row("esc", "close this, or leave Clean") +
        "</table>";
 
-  h += "<h3>the three indexes</h3><ul>" +
-       "<li><b>Paper&rarr;Lean</b> — pick a statement; the right page opens the " +
-       "module that cites it, scrolled to the declaration and banded.</li>" +
-       "<li><b>Lean&rarr;Paper</b> — pick a declaration; the paper marks every " +
-       "statement it claims to be.</li>" +
+  h += "<h3>the three indexes</h3>" +
+       "<p>They are the three roots of the tree on the left, and they fold. " +
+       "You do not switch between them: picking a row is what says which one " +
+       "you are reading in, and the root it belongs to is marked.</p><ul>" +
+       "<li><b>Paper&rarr;Lean</b> — document, section, statement. Pick a " +
+       "statement; the right page opens the module that cites it, scrolled to " +
+       "the declaration and banded.</li>" +
+       "<li><b>Lean&rarr;Paper</b> — directory, module, declaration, and only " +
+       "the declarations that carry a citation. Pick one; the paper marks " +
+       "every statement it claims to be.</li>" +
        "<li><b>Files</b> — the two source trees as they sit on disk, the only " +
        "index that does not go through the correspondence. Modules are in " +
-       "<i>import order</i>, so the list reads as the development is built up." +
+       "<i>import order</i>, so the tree reads as the development is built up." +
        "</li></ul>";
 
   h += "<h3>how the link is made</h3>" +
@@ -1165,23 +1318,20 @@ function boot() {
   verso = $("#leanpane"); noteEl = $("#note"); liveEl = $("#live");
   rscroll = $("#pdfscroll"); vscroll = $("#leanscroll");
   LeanView.init(verso, vscroll, function (label) { return findLabel(label); });
-  PDFView.init($("#pdfpages"), rscroll, function (key) {
-    if (state.mode !== "paper") { state.mode = "paper"; syncModes(); }
-    select(key);
-  }, allMarks);
+  PDFView.init($("#pdfpages"), rscroll, function (key) { select(key); }, allMarks);
 
-  document.querySelectorAll(".modes button").forEach(function (b) {
-    b.onclick = function () { setMode(b.dataset.mode); };
-  });
   $("#cleanbtn").onclick = function () { toggleClean(); };
   $("#allbtn").onclick = function () { toggleAll(); };
   $("#helpbtn").onclick = function () { toggleHelp(); };
   $("#help").onclick = function (e) { if (e.target === $("#help")) toggleHelp(false); };
-  $("#search").oninput = function (e) { state.q = e.target.value; buildRail(); };
+  // a new filter is a new tree, and it starts unfolded: what the reader folded
+  // away is about the index, not about this search
+  function filter(q) { state.q = q; qfold = {}; buildRail(false); }
+  $("#search").oninput = function (e) { filter(e.target.value); };
 
   document.addEventListener("keydown", function (e) {
     if (e.target.tagName === "INPUT") {
-      if (e.key === "Escape") { e.target.value = ""; state.q = ""; buildRail(); e.target.blur(); }
+      if (e.key === "Escape") { e.target.value = ""; filter(""); e.target.blur(); }
       return;
     }
     // asking to filter is asking for the rail back
@@ -1193,24 +1343,32 @@ function boot() {
     else if (e.key === "Escape") {
       if (!$("#help").hidden) toggleHelp(false); else toggleClean(false);
     }
+    /* j and k walk the rows that are on screen, which is now every unfolded
+       row of all three indexes rather than the rows of one of them: the
+       selection crosses from one index into the next, and the key it lands on
+       is what says which index that is.  With the selected row folded away
+       there is nowhere to step from, so a step starts at the end it came
+       from. */
     else if (e.key === "j" || e.key === "k") {
+      var down = e.key === "j";
       var all = [].slice.call(railBody.querySelectorAll(".itm"));
-      var i = all.findIndex(function (el) { return el.classList.contains("sel"); });
-      var nx = all[Math.max(0, Math.min(all.length - 1, i + (e.key === "j" ? 1 : -1)))];
+      var i = all.findIndex(function (el) { return el.dataset.key === state.sel; });
+      if (i < 0) i = down ? -1 : all.length;
+      var nx = all[Math.max(0, Math.min(all.length - 1, i + (down ? 1 : -1)))];
       if (nx) select(nx.dataset.key);
     }
+    /* folding from the keyboard, on the branch the selection is in: h closes
+       the innermost one still open, l opens the outermost one still closed.
+       Neither moves the selection — folding an index is a statement about the
+       index, and the two pages go on showing what was picked. */
+    else if (e.key === "h" || e.key === "ArrowLeft") foldStep(true);
+    else if (e.key === "l" || e.key === "ArrowRight") foldStep(false);
   });
 
   /* deep links stay live: changing only the hash does not reload the page */
   window.addEventListener("hashchange", function () {
     var k = decodeURIComponent((location.hash || "").slice(1));
-    if (!k || k === state.sel) return;
-    var m = modeOf(k);
-    if (!m) return;
-    if (state.mode !== m) {
-      state.mode = m; syncModes();
-      if (m === "files") { enterFiles(k); return; }
-    }
+    if (!k || k === state.sel || !modeOf(k)) return;
     select(k);
   });
 

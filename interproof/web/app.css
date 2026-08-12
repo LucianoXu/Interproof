@@ -162,17 +162,6 @@ header {
   min-height: 0;
 }
 
-.modes { display: flex; border-bottom: 1px solid var(--rule); flex: none; }
-.modes button {
-  flex: 1; background: none; border: 0; border-right: 1px solid var(--rule);
-  padding: 9px 2px 8px; white-space: nowrap;
-  font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--ink-faint); cursor: pointer; transition: .15s;
-}
-.modes button:last-child { border-right: 0; }
-.modes button:hover { color: var(--ink); background: var(--paper-hi); }
-.modes button.on { color: var(--rust); background: var(--paper-hi); box-shadow: inset 0 -2px 0 var(--rust); }
-
 .searchwrap { flex: none; border-bottom: 1px solid var(--rule); position: relative; }
 #search {
   width: 100%; border: 0; background: transparent; padding: 10px 12px 10px 26px;
@@ -187,52 +176,105 @@ header {
 
 .railbody { flex: 1; min-height: 0; padding-bottom: 40px; }
 
-.grp {
-  font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase;
-  color: var(--ink-faint);
-  padding: 16px 14px 6px 14px;
-  border-bottom: 1px solid var(--paper-2);
-  position: sticky; top: 0; background: var(--paper); z-index: 2;
-}
+/* --- the tree ----------------------------------------------------------- */
 
-.itm {
-  display: grid; grid-template-columns: 30px 1fr auto; align-items: baseline;
-  gap: 8px; padding: 7px 12px 7px 0;
-  border-bottom: 1px solid var(--paper-2);
-  cursor: pointer; position: relative;
+/* One row shape for the whole index: a twisty, a name, a count — and, on the
+   rows that stand for something to read, the kind between the first two.  The
+   depth is carried as `--d` and spent on the left padding, so a row knows
+   nothing about the branch it is on except how deep it sits. */
+.row {
+  display: flex; align-items: baseline; gap: 7px;
+  padding: 4px 11px 4px calc(9px + var(--d) * 10px);
+  position: relative; cursor: pointer;
   transition: background .12s;
   animation: rise .4s backwards;
 }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
-.itm::before {
-  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+.row:hover { background: var(--paper-hi); }
+
+/* the guide at the row's own indent: the tree's left edge, and where a row
+   says whether it carries any correspondence at all */
+.row::before {
+  content: ""; position: absolute; top: 0; bottom: 0;
+  left: calc(var(--d) * 10px + 2px); width: 1px;
   background: var(--paper-2);
 }
-.itm.has::before { background: var(--rust); }
-.itm:hover { background: var(--paper-hi); }
-.itm.sel { background: var(--paper-hi); }
-.itm.sel::before { background: var(--ink); width: 3px; }
+/* only on the rows that stand for something to read: a branch is a place, and
+   a place does not carry citations — everything under it does */
+.itm.has::before { background: var(--rust); width: 2px; }
+.itm.sel::before { background: var(--ink); width: 2px; }
+
+.tw { flex: none; width: 9px; align-self: stretch; position: relative; }
+.nd > .tw::before {
+  content: ""; position: absolute; left: 0; top: 5px;
+  border: 3.5px solid transparent; border-left-color: var(--ink-faint);
+  transform-origin: 1.5px 3.5px; transition: transform .12s ease;
+}
+.nd.open > .tw::before { transform: rotate(90deg); }
+
+.nm {
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft);
+  line-height: 1.35; min-width: 0; overflow-wrap: anywhere;
+}
+.ct {
+  margin-left: auto; padding-left: 6px;
+  font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint);
+}
+
+/* --- the nodes ---------------------------------------------------------- */
+
+.nd > .nm {
+  font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+/* a directory and a file are named, not titled: their own case, kept */
+.nd.dir > .nm, .nd.file > .nm {
+  font-size: 11px; letter-spacing: .02em; text-transform: none;
+}
+.nd.file > .nm { color: var(--ink-soft); }
+
+/* the three indexes, at the top of their own branch.  They stay put while
+   what is under them scrolls: which index a row belongs to is the one thing
+   a row of a scrolled tree cannot say for itself. */
+.nd.root {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--paper);
+  padding-top: 8px; padding-bottom: 8px;
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--paper-2);
+}
+.nd.root::before { display: none; }
+.nd.root > .nm { font-size: 10px; letter-spacing: .16em; color: var(--ink-soft); }
+.nd.root > .tw::before { border-left-color: var(--ink-soft); }
+/* the index the two pages are answering to */
+.nd.root.cur > .nm { color: var(--rust); }
+.nd.root.cur > .tw::before { border-left-color: var(--rust); }
+
+/* --- the leaves --------------------------------------------------------- */
 
 .kd {
+  flex: none; width: 26px;
   font-family: var(--mono); font-size: 8.5px; letter-spacing: .08em;
-  text-transform: uppercase; color: var(--ink-faint); padding-left: 11px;
+  text-transform: uppercase; color: var(--ink-faint);
 }
 .itm.has .kd { color: var(--rust); }
-.nm { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); line-height: 1.35; }
 .itm.has .nm { color: var(--ink); }
+.itm.sel { background: var(--paper-hi); }
 .itm.sel .nm { color: var(--ink); font-weight: 600; }
-.ct {
-  font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint);
-  padding-top: 1px;
-}
 .itm.has .ct { color: var(--rust-soft); }
 
 /* the file index: a row is a source file rather than an item, and two of them
-   are open at once — one per page.  Both are marked; the rule on the left
-   still says whether the file carries any correspondence at all. */
+   are open at once — one per page.  Being open is not being selected, and it
+   is marked more quietly: the reader's place is somewhere else. */
 .itm.file .nm { color: var(--ink-soft); }
+.itm.open .nm { color: var(--ink); }
+.itm.open:not(.sel)::before { background: var(--ink-faint); width: 2px; }
 .itm.file.sel .nm { color: var(--ink); }
-.grp .dim { color: var(--rule); }
+
+.norow {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--ink-faint);
+  padding: 14px; cursor: default;
+}
 
 /* ==========================================================================
    recto — the paper page
