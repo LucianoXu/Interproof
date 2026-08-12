@@ -1079,15 +1079,18 @@ function liveMark(cls, text) {
   else liveEl.removeAttribute("data-tip");
 }
 
-/* A published folder has no connection to report, so it has no lamp — unless
-   there is something wrong with it, which is worth a reader's attention
-   wherever they opened it. */
+/* A published folder has no connection to report, so its lamp reports the one
+   thing it does have: whether the correspondence in it holds.  It says so even
+   when the answer is yes — a lamp that appears only on bad news is a lamp a
+   reader cannot trust the absence of, and cannot learn to read before the day
+   it matters. */
+var STATIC_WORD = { bad: "failed", warn: "warning", ok: "ok", idle: "…" };
+
 function markHealth() {
   if (BOOT.mode === "live" || !liveEl) return;
   var h = health();
-  if (h.cls === "ok" || h.cls === "idle") { liveEl.style.display = "none"; return; }
   liveEl.style.display = "flex";
-  liveMark("", h.cls === "bad" ? "build failed" : "check the citations");
+  liveMark(h.cls, STATIC_WORD[h.cls] || "ok");
 }
 
 function stamped() {

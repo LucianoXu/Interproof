@@ -17,8 +17,13 @@
   <header>
     <div class="brand"><b>Interproof</b><span><!--TITLE--></span></div>
     <div class="hbar">
-      <div id="stats" style="display:flex;gap:20px"></div>
+      <!-- The verdict comes before the counts, because it is what the counts
+           are for: "44 links, 0 dangling" is the evidence and the lamp is the
+           reading of it.  Shown in every build, not only a served one — a
+           folder somebody was sent has a condition too, and a reader opening
+           it has no terminal to have watched. -->
       <span class="live" id="live"></span>
+      <div id="stats" style="display:flex;gap:20px"></div>
       <div class="hspacer"></div>
       <!-- Four things the page can do, as four targets.  The label is the
            tooltip rather than the button, because a row of words reads as a

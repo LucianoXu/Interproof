@@ -194,6 +194,10 @@ header {
 /* not following any more — the colour is the last thing known to be true, and
    the word is what says so */
 .live.off, .live.bad { color: var(--rust-soft); }
+/* in a published folder the word *is* the verdict, so it carries the colour
+   too; in a served one the word is the activity and stays neutral */
+.live.warn { color: var(--amber); }
+.live.ok { color: var(--verd-dim); }
 @keyframes blink { 50% { opacity: .25; } }
 
 /* --- what the viewer is doing ------------------------------------------- */

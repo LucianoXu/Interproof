@@ -262,8 +262,10 @@ argument: **[docs/config.md](docs/config.md#elaborate--what-the-machine-page-can
   citations, nothing placed on a page, elaboration asked for and not run — and
   rust when the build failed outright. Its **text is the session**: `live`,
   `rebuilding`, `elaborating`, `offline`. Hover it for the reason. A published
-  folder has no session to report, so it shows no lamp — unless the project is
-  not green, which is worth saying wherever the folder was opened.
+  folder has no session to report, so its word is the verdict itself — `ok`,
+  `warning`, `failed` — and it is there in every build, including a clean one:
+  a lamp that appears only on bad news is a lamp whose absence says nothing,
+  and that nobody has learnt to read by the day it matters.
 - `/` filter — it searches both indexes at once, by statement, by declaration
   and by file name, and shows what it found in each · `j`/`k` move · `h`/`l`
   fold and unfold the branch you are in · `a` formalized · `c` clean · the URL
