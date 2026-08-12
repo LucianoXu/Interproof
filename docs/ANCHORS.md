@@ -221,12 +221,33 @@ Each step ships on its own, and the heaviest machinery comes last, when the
 steps before it have shown it is needed.
 
 1. **Lean-side members** — done. No geometry, purely additive.
-2. **Anchors on line-addressable things** — `align` rows, `\item`s — using the
-   SyncTeX that is already there. This covers grammars and enumerated
-   conditions, which is most of what is wanted.
-3. **`\pdfsavepos` injection** — true inline spans. Only after 2 has shown
-   where it falls short.
+2. **Anchors on line-addressable things** — done. `% @interproof anchor <path>`
+   claims source lines, and SyncTeX locates them with the call it already had.
+3. **`\pdfsavepos` injection** — true inline spans. Not built.
 
-Step 2 will also answer the question the whole design rests on: whether the
-correspondence people want to draw at this granularity is one they have
-actually written down.
+### What step 2 measured
+
+It was supposed to answer whether the correspondence people want at this
+granularity is one that is line-addressable. On the tracked example the answer
+came back **both ways**, which is the useful outcome:
+
+- `def:aeval` is an `enumerate` of two `\item`s, and they are cleanly
+  addressable — one lands on page 1, the other on page 2. Anchored, they band
+  5.0% and 10.5% of a page against the statement's 18.4% + 20.3% across a page
+  break. That is the whole feature working.
+- `def:cmd` is a BNF grammar written `\[ c ::= \skipk \mid x := a \mid … \]`.
+  Its five productions sit on five *source* lines and one *typeset* line, and
+  SyncTeX returns **the identical box for all seven lines of the display**.
+  Step 2 cannot touch it.
+
+So the demo now carries one of each, on purpose: `paper:def:aeval:arith`
+resolves to a real anchor with a tight rectangle, and `paper:def:cmd:while`
+peels to `def:cmd` because the paper has nowhere finer to point. The second is
+not a failure — it is the graceful degradation the peeling rule exists for, and
+it is what step 3 would upgrade.
+
+The cheap fix for a grammar like `def:cmd` is not always step 3, either:
+rewriting the display as an `align` with one production per row makes it
+line-addressable, at the cost of a taller display. Whether that is worth doing
+is the author's call, and it is worth knowing it is available before paying for
+`\pdfsavepos`.

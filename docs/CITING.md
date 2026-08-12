@@ -42,6 +42,13 @@ A citation may name a *clause* of a numbered statement: `def:wf.3` is clause 3
 of `def:wf`, and resolves to `def:wf` with the clause recorded. A trailing dot
 that is really sentence punctuation is not mistaken for one.
 
+A citation may also name a **part** of a statement by path — `def:wf:dom`,
+`def:cmd:while`. If the paper carries an anchor by that name the citation
+resolves to it and the reader bands that part alone; if it does not, the tail
+is peeled and the citation resolves to the statement, with the part recorded.
+So a path is always safe to write, and it sharpens by itself the day the paper
+is annotated. Anchors are **[docs/ANCHORS.md](ANCHORS.md)**.
+
 ### Why only the label
 
 An earlier version also read a statement named by its **kind and title** —

@@ -41,6 +41,7 @@ class TexItem:
     cited_by: list[str] = field(default_factory=list)   # item keys citing it
     rect: dict | None = None                            # synctex box in the PDF
     proof_rect: dict | None = None
+    parent: str = ""         # for an anchor, the statement it is a part of
 
 
 def read_braced(s: str, open_idx: int) -> tuple[str, int]:
@@ -96,10 +97,31 @@ def clean_title(t: str) -> str:
     return t.strip()
 
 
+ANCHOR_RE = re.compile(
+    r"^[ \t]*%+[ \t]*@interproof[ \t]+anchor[ \t]+(?P<path>[A-Za-z0-9][\w\-.:]*)"
+    r"(?:[ \t]*=[ \t]*\"(?P<text>[^\"]*)\")?[ \t]*$", re.M)
+
+
+def anchors_in(text: str) -> list[tuple[int, str, str]]:
+    """The `% @interproof anchor <path>` directives, as (line, path, text).
+
+    Read from the source *before* comments are stripped, and stripping keeps
+    the newline, so the line numbers these carry are the ones SyncTeX answers
+    to.  A directive is a comment: the file compiles for someone who has never
+    heard of this tool, which is the whole reason the annotation is not a
+    macro.
+    """
+    return [(text.count("\n", 0, m.start()) + 1, m.group("path"),
+             m.group("text") or "")
+            for m in ANCHOR_RE.finditer(text)]
+
+
 def parse_file(path: Path, doc: str, rel: str, start_order: int,
                grammar: Grammar) -> list[TexItem]:
     """One LaTeX file's labelled items, in source order."""
-    raw = strip_comments(path.read_text(encoding="utf-8", errors="replace"))
+    source = path.read_text(encoding="utf-8", errors="replace")
+    directives = anchors_in(source)
+    raw = strip_comments(source)
     label_re = grammar.label_re
     items: list[TexItem] = []
     cur_sec, cur_sub = "", ""
@@ -186,7 +208,67 @@ def parse_file(path: Path, doc: str, rel: str, start_order: int,
                 refs=sorted({f"{a}:{b}" for a, b in label_re.findall(rest + proof)}),
             ))
         i = after
+
+    items.extend(_anchors(directives, items, doc, rel, raw.split("\n"), order))
     return items
+
+
+def _anchors(directives: list[tuple[int, str, str]], items: list[TexItem],
+             doc: str, rel: str, lines: list[str], order: int) -> list[TexItem]:
+    """Turn `% @interproof anchor` directives into items of their own.
+
+    A directive claims **source lines**, which is all this step can honestly
+    locate: SyncTeX answers per typeset line, so a part of a statement that
+    occupies its own line — a row of an `align`, an `\\item`, a rule in a
+    `mathpar` — can be found exactly, and one sharing a line with its
+    neighbour cannot.  A directive on the second kind is not wrong, it is
+    simply banded as coarsely as the line it sits on.
+
+    The extent runs to the next anchor of the same statement, so an `\\item`
+    anchor covers its whole clause rather than the clause's first typeset line.
+    """
+    out: list[TexItem] = []
+    if not directives:
+        return out
+    owners = [it for it in items if it.end_line > it.line]
+
+    def target(ln: int, want: str) -> int:
+        """The line the directive is about: the next one carrying content, or
+        the next one containing the quoted text."""
+        for k in range(ln, len(lines)):
+            body = lines[k].strip()
+            if not body or ANCHOR_RE.match(lines[k]):
+                continue
+            if want and want not in lines[k]:
+                continue
+            return k + 1
+        return ln
+
+    placed = [(target(ln, want), path) for ln, path, want in directives]
+    placed.sort()
+    for k, (at, path) in enumerate(placed):
+        # the statement it is inside, innermost first
+        parent = ""
+        best = None
+        for it in owners:
+            if it.line <= at <= it.end_line and (best is None
+                                                 or it.end_line - it.line < best):
+                parent, best = it.label, it.end_line - it.line
+        stop = placed[k + 1][0] - 1 if k + 1 < len(placed) else 0
+        own = next((it for it in owners if it.label == parent), None)
+        if own is not None:
+            stop = min(stop or own.end_line - 1, own.end_line - 1)
+        order += 1
+        out.append(TexItem(
+            label=path, doc=doc, kind="anchor", file=rel,
+            line=at, end_line=max(stop, at), parent=parent,
+            # an anchor reads as a part of its statement, so it sorts with it
+            # rather than after everything else the file happens to hold
+            order=own.order if own is not None else order,
+            section=own.section if own is not None else "",
+            subsection=own.subsection if own is not None else "",
+            title=path.rsplit(":", 1)[-1]))
+    return out
 
 
 def parse_document(doc: Document, grammar: Grammar,

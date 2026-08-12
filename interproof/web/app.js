@@ -235,7 +235,7 @@ function itemsOrdered() {
 
 var KINDSHORT = { theorem: "thm", lemma: "lem", definition: "def", proposition: "prop",
                   corollary: "cor", remark: "rem", example: "ex", fact: "fact",
-                  conjecture: "conj", assumption: "assm" };
+                  conjecture: "conj", assumption: "assm", anchor: "part" };
 
 /* what each document holds, for its row in the index: labelled statements, and
    how many of them the formalization cites */
@@ -344,8 +344,12 @@ function paperRoot(q) {
     if (it.section) at = child(at, at.id + "/" + it.section, it.section, "sec");
     if (it.subsection) at = child(at, at.id + "/" + it.subsection, it.subsection, "sec");
     var ct = (BY[key] || []).length;
+    // an anchor is a *part* of the statement above it, and it sorts with that
+    // statement; the turnstile is what says so at a glance in a flat list
+    var shown = it.title || it.label;
+    if (it.kind === "anchor") shown = "↳ " + shown;
     at.kids.push(tleaf(key, KINDSHORT[it.kind] || it.kind.slice(0, 4),
-                       it.title || it.label, ct || "·", ct > 0, state.sel === key,
+                       shown, ct || "·", ct > 0, state.sel === key,
                        "txt"));   // a statement's title is prose, not an identifier
   });
   return root;

@@ -9,12 +9,14 @@
 Evaluation is defined by recursion on syntax, in two clauses.
 
 \begin{enumerate}
+% @interproof anchor def:aeval:arith
 \item For the arithmetic expressions of \Cref{def:aexp},
 \[
   \sem{n}\sigma = n, \qquad
   \sem{x}\sigma = \sigma(x), \qquad
   \sem{a_1 + a_2}\sigma = \sem{a_1}\sigma + \sem{a_2}\sigma .
 \]
+% @interproof anchor def:aeval:bool
 \item For the boolean expressions of \Cref{def:bexp}, writing
 $\mathbb{B} = \{\mathsf{tt}, \mathsf{ff}\}$,
 \begin{align*}

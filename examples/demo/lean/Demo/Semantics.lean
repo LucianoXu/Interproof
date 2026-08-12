@@ -15,14 +15,14 @@ that shows every paper item as green is a view with nothing to say.
 namespace Demo
 
 /-- Evaluation of arithmetic expressions: clause 1 of the paper's definition,
-paper:def:aeval.1.  Total, because an expression has no side effect and cannot
+paper:def:aeval:arith.  Total, because an expression has no side effect and cannot
 fail. -/
 def AExp.eval : AExp → Store → Nat
   | .lit n, _ => n
   | .var x, s => s x
   | .add a b, s => a.eval s + b.eval s
 
-/-- Evaluation of boolean expressions — the other half, paper:def:aeval.2.
+/-- Evaluation of boolean expressions — the other half, paper:def:aeval:bool.
 The trailing dot there is sentence punctuation and not part of the clause. -/
 def BExp.eval : BExp → Store → Bool
   | .tt, _ => true

@@ -95,7 +95,8 @@ warnings on a stock TeX Live, both producing a `.synctex.gz`.
 | 16 | **Import order is not alphabetical** | alphabetical: `Logic/Rules, Logic/Soundness, Semantics, Store, Syntax`. Import order: `Store, Syntax, Semantics, Logic/Rules, Logic/Soundness`. The bottom module sorts fourth and the top module sorts first; an implementation that fell back to alphabetical order would be caught by every entry |
 | 17 | A citation is **a label in a comment**, optionally with a document marker | `paper:def:cmd`, `note, def:update`. Both spellings of the marker work, and all 44 citations take this form, because it is the only form there is |
 | 18 | A **label is the only thing read** — a title is not a citation | the docstring of `AgreeOn` in `Demo/Store.lean` says *Agreement on a frame* and the note's `def:frame` is titled *frame lifting*; neither phrase links anything. Only the written `def:frame` does |
-| 19 | A citation may name a **clause** of a statement, and a trailing dot is sentence punctuation | `Demo/Semantics.lean` cites `paper:def:aeval.1` for `AExp.eval` and `paper:def:aeval.2.` for `BExp.eval` — the paper's evaluation definition really does have two clauses. Both resolve to `def:aeval` with the clause recorded, and the second one's final dot is not read as part of it |
+| 19 | An **anchor** names a part of a statement, and the paper still compiles | `20-semantics.tex` carries `% @interproof anchor def:aeval:arith` and `…:bool` above the two `\item`s of `def:aeval`. They are LaTeX comments: `latexmk` never sees them. `Demo/Semantics.lean` cites them for `AExp.eval` and `BExp.eval`, and a trailing dot is still sentence punctuation |
+| 19a | An anchor **bands less than its statement** | `def:aeval` runs across a page break — two marks, 18.4% of page 1 and 20.3% of page 2. `def:aeval:arith` is one mark of 5.0%, `def:aeval:bool` one of 10.5%. If an anchor ever bands as much as its parent, the geometry has stopped saying anything |
 | 20 | A citation in the `/-- … -/` docstring **above** a declaration belongs to that declaration | 31 of the 44 |
 | 21 | A citation in `/-! … -/` module prose belongs to **no declaration**, but to the block that cites | 13 of the 44, in every module header and in the two closing notes of `Demo/Logic/Rules` and `Demo/Store` |
 | 22 | One label cited from **two distant blocks** of one file is two places, not one region | `paper:def:triple` in `Demo/Logic/Rules.lean`: the module header at line 7, and again at line 98, ninety lines below. The lines in between cite nothing, and a band spanning both would be a lie |
@@ -131,18 +132,18 @@ Produced by the repository's own parsers over these sources.
 
 | | |
 |---|---|
-| LaTeX items | **36** — paper 25, note 11 |
-| … statements (`definition`/`lemma`/…) | 28 |
+| LaTeX items | **38** — paper 27, note 11 |
+| … statements (`definition`/`lemma`/…) | 28, plus 2 anchors naming parts of one |
 | … sections and subsections | 8 |
 | … with a `proof` environment | 13 |
 | `\Cref` edges between items | 35 |
 | **statements with a Lean counterpart** | **26 / 28** |
-| statements located in the PDF by SyncTeX | 28 / 28 |
+| items located in the PDF by SyncTeX | 30 / 30 — 28 statements and both anchors |
 | Lean modules | 5 |
 | Lean declarations | 57 — 31 written, 26 constructors and fields read out of them (1 with `sorry`) |
 | Lean lines | 427 |
 | **citations Lean → LaTeX** | **44**, every one of them by label |
-| distinct items cited | 28 |
+| distinct items cited | 30 |
 | use edges between declarations | 161 |
 | **dangling citations** | **0** |
 

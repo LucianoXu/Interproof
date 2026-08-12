@@ -524,7 +524,10 @@ def attach_pdf_rects(cfg: Config, items: dict[str, TexItem], *,
                       f"still in this document's latexmk command?", file=sys.stderr)
             continue
         for it in items.values():
-            if it.doc != d.id or it.kind not in cfg.grammar.environments:
+            # anchors are located the same way and by the same call: an anchor
+            # is a range of source lines, which is what `rect` takes
+            if it.doc != d.id or it.kind not in (*cfg.grammar.environments,
+                                                 "anchor"):
                 continue
             if not st.knows(it.file):
                 continue

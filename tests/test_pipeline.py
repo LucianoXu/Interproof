@@ -184,6 +184,51 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(self.man["grammar"]["label_prefixes"],
                          list(self.cfg.grammar.label_prefixes))
 
+    def test_an_anchor_is_a_part_of_a_statement(self):
+        """`% @interproof anchor def:aeval:arith` names one clause.
+
+        The directive is a LaTeX comment, so the paper still compiles for
+        somebody who has never heard of this tool.
+        """
+        anch = {k: it for k, it in self.man["tex"].items() if it["kind"] == "anchor"}
+        self.assertTrue(anch, "the example must carry anchors")
+        for k, it in anch.items():
+            self.assertTrue(it["parent"], f"{k} has no enclosing statement")
+            self.assertTrue(k.startswith(f"{it['doc']}::{it['parent']}:"),
+                            f"{k} does not extend its parent's label")
+
+    def test_a_citation_reaches_the_anchor_itself(self):
+        """Not peeled: the anchor exists, so the link is to the clause."""
+        keys = {l["key"] for l in self.man["links"]}
+        self.assertIn("paper::def:aeval:arith", keys)
+        self.assertIn("paper::def:aeval:bool", keys)
+        for l in self.man["links"]:
+            if l["key"] == "paper::def:aeval:arith":
+                self.assertEqual(l["decl"], "AExp.eval")
+                self.assertNotIn("sub", l, "an existing anchor must not peel")
+
+    @unittest.skipUnless(HAVE_LATEX, "needs latexmk")
+    def test_an_anchor_bands_less_than_its_statement(self):
+        """The whole point: a tighter rectangle than the statement it is in.
+
+        `def:aeval` runs across a page break; each of its two clauses sits on
+        one page and covers a fraction of it.  If an anchor ever bands as much
+        as its parent, the geometry has stopped saying anything.
+        """
+        def height(k):
+            r = self.man["tex"][k]["rect"]
+            self.assertIsNotNone(r, f"{k} was not located")
+            pages = r["end_page"] - r["page"]
+            return pages * 2000 + (r["bottom"] - r["top"])
+
+        whole = height("paper::def:aeval")
+        for part in ("paper::def:aeval:arith", "paper::def:aeval:bool"):
+            self.assertLess(height(part), whole,
+                            f"{part} bands no tighter than the statement it is part of")
+            self.assertEqual(self.man["tex"][part]["rect"]["page"],
+                             self.man["tex"][part]["rect"]["end_page"],
+                             f"{part} should sit on one page")
+
     def test_module_and_declaration_citations_both_occur(self):
         owners = {l["decl"] is None for l in self.man["links"]}
         self.assertEqual(owners, {True, False},
