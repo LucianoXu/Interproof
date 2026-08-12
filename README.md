@@ -347,8 +347,8 @@ its reason and leaves the reader it would have had anyway.
 
 ```bash
 cd examples/demo
-interproof build --elaborate       # the tracked example is a Lean package
-interproof build --no-elaborate    # …or not this once
+interproof build                   # its interproof.toml says `elaborate = true`
+interproof build --no-elaborate    # …decline it for one run
 ```
 
 The example is where to see the difference: it is a `lake` package requiring

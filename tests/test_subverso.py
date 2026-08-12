@@ -422,14 +422,25 @@ class InvocationTests(unittest.TestCase):
 
 
 class OffByDefaultTests(unittest.TestCase):
-    """The promise the default keeps: no toolchain is needed to read."""
+    """The promise the default keeps: no toolchain is needed to read.
+
+    The *tool's* default, that is.  The demo opts in, in its own
+    `interproof.toml`, because its published page is its showcase — that is
+    the knob doing its documented job, not the promise broken.  So the
+    default is asserted on the field, and the text-only path is exercised by
+    declining what the demo asked for.
+    """
+
+    def test_elaboration_is_opt_in(self):
+        import dataclasses
+        field = {f.name: f for f in dataclasses.fields(C.Config)}["elaborate"]
+        self.assertFalse(field.default, "elaboration must be opt-in")
 
     def test_the_example_builds_without_elaboration(self):
         from interproof import manifest as M
 
         cfg = C.load(DEMO / "interproof.toml")
-        self.assertFalse(cfg.elaborate, "elaboration must be opt-in")
-        m = M.build(cfg, with_sources=False, quiet=True)
+        m = M.build(cfg, with_sources=False, quiet=True, elaborate=False)
         self.assertEqual(m["lean_defs"], {})
         self.assertFalse(m["stats"]["sem"]["on"])
         for f in m["lean"]:

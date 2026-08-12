@@ -122,6 +122,14 @@ root = "lean"
 # for scratch files and generated modules.  Nothing in this demo matches.
 exclude = ["**/Scratch.lean"]
 
+# Run the modules through Lean at build time: real colouring, hover types,
+# go-to-definition through `open`, and per-tactic proof states.  On for this
+# demo because the published page is its showcase — and because a plain
+# `interproof build` once shipped the tokenizer page by forgetting the flag.
+# Without a Lean toolchain the build still succeeds, says why, and produces
+# the text-only reader; `--no-elaborate` declines it for one run.
+elaborate = true
+
 
 # ---------------------------------------------------------------------------
 #  The label and citation conventions
