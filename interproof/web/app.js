@@ -1256,10 +1256,19 @@ function helpCitation(l) {
 function helpCode() {
   var s = (M.stats && M.stats.sem) || {};
   if (s.on && !s.failed) {
-    return "<p>This build was <b>elaborated</b>: " + (s.modules || 0) + " of " +
+    var h = "<p>This build was <b>elaborated</b>: " + (s.modules || 0) + " of " +
       (s.of || 0) + " modules went through Lean, so the colouring is Lean's " +
       "own grammar, a hover is the <i>elaborated</i> type or signature, and a " +
       "jump follows what the compiler resolved.</p>";
+    if (s.states) {
+      h += "<p>It also carries <b>" + s.states + " proof states</b> — the one " +
+        "thing on this page that is in neither source. The <b>line numbers " +
+        "in amber</b> are the lines that have one; hover a tactic and you see " +
+        "the state it <i>left</i>. Hover a case arrow for that branch's " +
+        "obligation, and the step that closes it reports no goals left. What " +
+        "a step was applied <i>to</i> is the state after the line above it.</p>";
+    }
+    return h;
   }
   return "<p>This build read the formal sources as <b>text</b>. The machine " +
     "page still links names to the declarations that carry them, and a hover " +
@@ -1295,6 +1304,8 @@ function helpHTML() {
        "pointer: hovering says what it is, clicking goes to where it is " +
        "defined, and every other occurrence of it is marked while you are " +
        "on it.</li>" +
+       "<li>Any <b>tactic on an amber-numbered line</b>, which shows the " +
+       "proof state that tactic left.</li>" +
        "</ul>" + helpCode();
 
   h += "<h3>keys</h3><table class='hkeys'>" +

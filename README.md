@@ -205,6 +205,7 @@ different claims rather than different amounts of polish.
 | hover | the declaration **as written**, and its docstring | the **elaborated** signature or type |
 | jump | a name matched against this build | what the compiler resolved, through `open` and notation |
 | occurrences | — | the identity Lean gave the token |
+| **proof state** | — | what each tactic left, on the tactic |
 
 The default is the promise the rest of this tool makes: everything is source
 text, so a reader builds against a formalization whose toolchain you have never
@@ -212,6 +213,16 @@ installed — including somebody else's. Turning elaboration on trades that for
 the other column, once, at build time: each module goes through
 [SubVerso](https://github.com/leanprover/subverso) and what it learned is baked
 into the manifest.
+
+The **proof state** is the one thing on the page that is in neither source: the
+paper does not write it down and the Lean file does not either. The gutter
+marks the lines that have one, and hovering a tactic shows the state that
+tactic *left* — hover `intro s t hP h` and you see what `intro` did; hover a
+case arrow and you see that branch's obligation; hover the `exact` under it and
+there are no goals left, which is how a reader sees a branch discharged. What a
+step was applied *to* is the line above it, which is where one looks anyway.
+Nothing is stepped through and nothing moves: the lines stay where they are, so
+the bands that carry the correspondence stay exact.
 
 **The artifact does not change.** The folder still opens with no server, no
 LaTeX and no Lean; only the machine that *builds* it needs a toolchain. And
@@ -230,7 +241,9 @@ SubVerso, it depends on nothing but Lean core, and `--elaborate` on it costs
 about twenty seconds the first time and two after that.
 
 What it costs the artifact is reported, not estimated — on that example, 1 845
-tokens over five modules add 116 KB to a manifest. Setup, caching and the size
+tokens and 74 proof states over five modules add 125 KB to a manifest, of
+which the states are 9 KB: they go by tactic, and tactics are an order of
+magnitude rarer than tokens. Setup, caching and the size
 argument: **[docs/config.md](docs/config.md#elaborate--what-the-machine-page-can-say-about-itself)**.
 - **Clean** (`c`): the apparatus put away, leaving the two documents.
 - `/` filter — it searches both indexes at once, by statement, by declaration
@@ -295,10 +308,11 @@ worth reporting rather than a patch worth making.
 
 - **Statement-level granularity.** Proof-body ↔ tactic-block alignment — the
   actual research contribution this project would make — is not here yet.
-- **No goal states.** What a tactic did to the proof obligation needs
-  elaboration *and* a place to put it; the elaboration is now here (see
-  **Reading the code**) and the alignment is the item above. Until then the
-  machine page shows the proof, not the proof in progress.
+- **A proof state is the state a tactic left, not the one it was given.** That
+  is what SubVerso records, and deriving the other by pairing each tactic with
+  its predecessor would be right down a block and wrong across every branch
+  boundary — so it is not claimed. The state before a step is the state after
+  the step above it, one hover away.
 - **Citations are trusted, not verified.** Nothing checks that a declaration
   states what the statement it cites says. Interproof puts the two texts side
   by side so a reader can check in a second, which is a different and more

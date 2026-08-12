@@ -123,6 +123,61 @@ class TranslateTests(unittest.TestCase):
             S.translate(fake.module(a, split=1), b)
 
 
+class ProofStateTests(unittest.TestCase):
+    """Where a proof state is attached, and what it claims.
+
+    Placement is the part that can be silently wrong, and it cannot lean on
+    SubVerso's own `startPos`/`endPos`: those do not agree with offsets into
+    the file — on the example, a node reading `exact while_rule ih` reports a
+    range landing inside a comment twenty lines away.  Tactics are therefore
+    placed by the same walk that places the tokens, and this is the assertion
+    that the walk agrees with the file.
+    """
+
+    def test_a_state_lands_on_the_tactic_that_left_it(self):
+        text = "\n".join([
+            "theorem t (n : Nat) : n = n := by",
+            "  induction n with",
+            "  | zero => rfl",
+            "  | succ k ih => rfl",
+            "",
+        ])
+        ov = S.translate(fake.module(text, split=1), text)
+        lines = text.split("\n")
+        self.assertTrue(ov["tacs"], "the fake export carries no tactics")
+        for i in range(0, len(ov["tacs"]), 4):
+            ln, col, n, st = ov["tacs"][i:i + 4]
+            self.assertGreaterEqual(ln, 1)
+            self.assertLessEqual(ln, len(lines))
+            self.assertTrue(slice16(lines[ln - 1], col, n).strip(),
+                            f"a tactic at {ln}:{col}+{n} covers only whitespace")
+            self.assertLess(st, len(ov["states"]))
+
+    def test_goals_index_the_string_table(self):
+        text = "theorem t : True := by trivial\n"
+        ov = S.translate(fake.module(text, split=1), text)
+        for g in ov["goals"]:
+            for x in g["h"]:
+                self.assertLess(x, len(ov["strs"]))
+            self.assertLess(g["c"], len(ov["strs"]))
+        for st in ov["states"]:
+            for gi in st:
+                self.assertLess(gi, len(ov["goals"]))
+
+    def test_a_build_without_states_still_reads(self):
+        """An export with no `tactics` node at all — a module of definitions.
+
+        The overlay must still be well formed; the viewer reads `tacs` as
+        absent rather than as an error, which is the same shape a build from
+        before proof states was carried has.
+        """
+        text = "def f (n : Nat) : Nat := n\n"
+        ov = S.translate(fake.module(text, split=1), text)
+        self.assertEqual(ov["tacs"], [])
+        self.assertEqual(ov["states"], [])
+        self.assertTrue(ov["toks"], "the tokens are unaffected")
+
+
 class AttributeTests(unittest.TestCase):
     """What a token kind becomes, in the encoding `deriving ToJson` writes."""
 

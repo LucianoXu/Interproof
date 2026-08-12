@@ -192,7 +192,7 @@ def semantics(cfg: Config, files: list[dict], want: bool | None,
         say(f"!! {line}")
 
     defs: dict[str, str] = {}
-    tokens = 0
+    tokens = states = 0
 
     # One string table for the build, not one per module.  What a module's
     # overlay spends on text is mostly Lean's own vocabulary — the docstring
@@ -219,8 +219,19 @@ def semantics(cfg: Config, files: list[dict], want: bool | None,
             "attrs": [{k: (sid(local[v]) if k in TEXT_FIELDS else v)
                        for k, v in a.items()} for a in ov.get("attrs", [])],
             "toks": ov.get("toks", []),
+            # the proof states, if this build carries them: a goal's text is
+            # remapped into the shared table with everything else, because a
+            # hypothesis `s t : Store` is the same string in every proof that
+            # has one
+            "tacs": ov.get("tacs", []),
+            "goals": [{**({"n": sid(local[g["n"]])} if "n" in g else {}),
+                       "h": [sid(local[x]) for x in g["h"]],
+                       "c": sid(local[g["c"]])}
+                      for g in ov.get("goals", [])],
+            "states": ov.get("states", []),
         }
         tokens += len(ov.get("toks", [])) // 4
+        states += len(ov.get("tacs", [])) // 4
         for full, line in ov.get("defs", []):
             key = _owner(f, full, line)
             if key:
@@ -236,7 +247,7 @@ def semantics(cfg: Config, files: list[dict], want: bool | None,
 
     return strs, defs, {"on": True, "modules": len(overlays), "of": len(files),
                         "tokens": tokens, "names": len(defs), "bytes": spent,
-                        "strings": len(strs),
+                        "strings": len(strs), "states": states,
                         **({"notes": len(notes)} if notes else {})}
 
 
@@ -637,7 +648,8 @@ def report(manifest: dict, *, out: Path | None = None) -> None:
         print(f"elaborated     no — {why if len(why) <= 96 else why[:95] + '…'}")
     elif sem.get("on"):
         print(f"elaborated     {sem['modules']}/{sem['of']} modules, "
-              f"{sem['tokens']:,} tokens, {sem['names']:,} names"
+              f"{sem['tokens']:,} tokens, {sem.get('states', 0):,} proof states, "
+              f"{sem['names']:,} names"
               f"  (+{sem.get('bytes', 0) / 1024:.0f} KB in the manifest)")
     print(f"unresolved     {s['unresolved']}")
     for lbl, where in dangling(manifest).items():

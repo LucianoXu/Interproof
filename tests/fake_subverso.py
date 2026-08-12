@@ -30,6 +30,7 @@ class Fake:
         self.next = 0
         self.tokens: dict[str, dict] = {}
         self.code: dict[str, dict] = {}
+        self.goals: dict[str, dict] = {}
         self.tok_ix: dict[tuple, int] = {}
         self.code_ix: dict[str, int] = {}
 
@@ -62,10 +63,34 @@ class Fake:
     def seq(self, keys: list[int]) -> int:
         return self.node({"seq": {"highlights": keys}})
 
+    def goal(self, hyps: list[tuple[str, str]], concl: str) -> int:
+        """A proof state, interned as SubVerso interns them."""
+        import json
+        hs = []
+        for names, ty in hyps:
+            hs.append({"names": [self.token("unknown", names)],
+                       "typeAndVal": self.text(ty), "ppType": None})
+        g = {"name": None, "goalPrefix": "⊢ ", "hypotheses": hs,
+             "conclusion": self.text(concl), "ppConclusion": None}
+        k = self._key()
+        self.goals[str(k)] = g
+        return k
+
+    def tactics(self, info: list[int], content: int) -> int:
+        """A tactic and the state it left.
+
+        `startPos`/`endPos` are written deliberately wrong here — the real ones
+        do not agree with offsets into the file either, and the translation
+        must not have started trusting them.
+        """
+        return self.node({"tactics": {"info": info, "startPos": 99999,
+                                      "endPos": 99999, "content": content}})
+
     def export(self, items: list[dict]) -> dict:
         return {
             "data": {"nextKey": self.next, "tokens": self.tokens,
-                     "messageContents": {}, "goals": {}, "code": self.code},
+                     "messageContents": {}, "goals": self.goals,
+                     "code": self.code},
             "items": items,
         }
 
@@ -87,12 +112,32 @@ def _kind(word: str, defining: bool) -> object:
                       "isDef": defining, "signatureFormat": None}}
 
 
+# What this fixture treats as a tactic, so that a proof grows `tactics` nodes
+# the way a real export does.  A case alternative counts: it is where a reader
+# asks what a branch has to prove, and it is where SubVerso puts a state too.
+TACTICS = {"intro", "intros", "exact", "apply", "simp", "simpa", "rfl", "cases",
+           "induction", "constructor", "rw", "omega", "trivial", "funext",
+           "by_cases", "subst", "refine", "use", "have", "calc", "decide"}
+
+
+def _is_tactic(line: str) -> bool:
+    t = line.strip()
+    if t.startswith("|") or t.startswith("·"):
+        return True
+    head = WORD.match(t)
+    return bool(head and head.group(0) in TACTICS)
+
+
 def module(text: str, *, split: int = 3) -> dict:
     """One Lean module, as `subverso-extract-mod` would have written it.
 
     `split` is how many commands the file is cut into.  More than one matters:
     the translation locates each command in the file by searching from where
     the last one ended, and a single command would never exercise that.
+
+    Lines that look like tactics are wrapped in `tactics` nodes carrying a
+    proof state, so the translation's placement of *those* is exercised too —
+    with `startPos`/`endPos` filled in wrongly on purpose.
     """
     f = Fake()
     lines = text.split("\n")
@@ -106,29 +151,61 @@ def module(text: str, *, split: int = 3) -> dict:
         body = "\n".join(chunk) + ("\n" if start + per < len(lines) else "")
         if not body:
             continue
-        keys, defines, i, seen_decl = [], [], 0, False
+        # (from, to, key) so a run of keys can be recognised as one line later
+        spans: list[tuple[int, int, int]] = []
+        defines, i, seen_decl = [], 0, False
+
+        def emit_text(a: int, b: int) -> None:
+            """Text, cut at the newlines, so no key straddles two lines."""
+            at = a
+            while at < b:
+                nl = body.find("\n", at, b)
+                stop = b if nl < 0 else nl + 1
+                spans.append((at, stop, f.text(body[at:stop])))
+                at = stop
+
         while i < len(body):
             # a block comment is one token and may cross a dozen lines
             if body.startswith("/-", i):
                 j = body.find("-/", i)
                 j = len(body) if j < 0 else j + 2
                 kind = "docComment" if body.startswith("/--", i) else "blockComment"
-                keys.append(f.node({"token": {"tok": f.token(kind, body[i:j])}}))
+                spans.append((i, j, f.node({"token": {"tok": f.token(kind, body[i:j])}})))
                 i = j
                 continue
             m = WORD.search(body, i)
             if not m:
-                keys.append(f.text(body[i:]))
+                emit_text(i, len(body))
                 break
             if m.start() > i:
-                keys.append(f.text(body[i:m.start()]))
+                emit_text(i, m.start())
             w = m.group(0)
             defining = (not seen_decl) and w not in KEYWORDS and "def " in body[:m.start()]
             if defining:
                 seen_decl = True
                 defines.append(w)
-            keys.append(f.node({"token": {"tok": f.token(_kind(w, defining), w)}}))
+            spans.append((m.start(), m.end(),
+                          f.node({"token": {"tok": f.token(_kind(w, defining), w)}})))
             i = m.end()
+
+        # wrap each tactic line's keys in a `tactics` node
+        keys: list[int] = []
+        at, n = 0, 0
+        while n < len(spans):
+            ls = body.rfind("\n", 0, spans[n][0]) + 1
+            le = body.find("\n", spans[n][0])
+            le = len(body) if le < 0 else le
+            run = [s for s in spans[n:] if s[0] >= ls and s[1] <= le + 1]
+            if _is_tactic(body[ls:le]) and run:
+                # every other tactic closes its branch, so both the "one goal"
+                # and the "no goals left" renderings are exercised
+                info = [] if (n % 2) else [f.goal(
+                    [("s t", "Store"), ("h", "P s")], "Q t")]
+                keys.append(f.tactics(info, f.seq([s[2] for s in run])))
+                n += len(run)
+            else:
+                keys.append(spans[n][2])
+                n += 1
 
         items.append({
             "range": {"start": {"line": start + 1, "column": 1},

@@ -547,6 +547,8 @@ header {
 .lsrc .at { color: #7f7a6c; }
 .lsrc .num { color: #b58cc0; }
 .lsrc .srr { background: #6b1a1a; color: #ffd7d7; padding: 0 3px; }
+/* and on the elaborated path, where Lean calls it a keyword */
+.lsrc .keyword.srr { background: #6b1a1a; color: #ffd7d7; padding: 0 3px; }
 .lsrc .citec {
   color: var(--amber); border-bottom: 1px solid rgba(221,139,60,.45); cursor: pointer;
 }
@@ -636,6 +638,38 @@ header {
   cursor: pointer;
 }
 .hcard .hwhere:hover { color: var(--amber); background: rgba(221,139,60,.10); }
+
+/* --- the proof state -----------------------------------------------------
+   The one thing on this page that is in neither source: the paper does not
+   write it down and the Lean file does not either.  So it is set apart from
+   the rest of the card rather than continuing it, and the conclusion is set
+   apart from the hypotheses, because `⊢` is the line a reader is looking
+   for. */
+.hcard .hgoals {
+  border-top: 1px solid var(--machine-rule);
+  background: rgba(255,255,255,.02);
+  padding: 8px 13px 10px; max-height: 46vh; overflow-y: auto;
+}
+.hcard .hgoals > i {
+  display: block; font-family: var(--ui); font-style: normal;
+  font-size: 9.5px; letter-spacing: .11em; text-transform: uppercase;
+  color: var(--machine-dim); margin-bottom: 7px;
+}
+.hcard .hgoals.none > i { margin: 0; color: var(--verd-dim); }
+.hcard .goal + .goal {
+  margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--machine-rule);
+}
+.hcard .goal .gname { color: var(--amber); font-size: 10.5px; }
+.hcard .goal .hyp { color: var(--machine-fg); white-space: pre-wrap; }
+.hcard .goal .concl {
+  color: #e0d8c4; white-space: pre-wrap; margin-top: 3px;
+  padding-top: 3px; border-top: 1px solid rgba(255,255,255,.06);
+}
+
+/* a tactic: the code says nothing, the gutter says there is something to ask */
+.lgut .gtac { color: var(--amber); opacity: .55; }
+.lsrc .tac { cursor: help; }
+.lsrc .tac:hover { background: rgba(125,146,104,.16); }
 
 /* --- what is being shown, above it ------------------------------------- */
 

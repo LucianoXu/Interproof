@@ -121,7 +121,9 @@ page gains what only elaboration knows:
 - **go to definition** that follows what the compiler resolved, including
   through `open` and through notation;
 - **every occurrence** of whatever is under the pointer, by the identity Lean
-  gave it — so two binders that share a name do not share the highlight.
+  gave it — so two binders that share a name do not share the highlight;
+- **the proof state** each tactic left, on the tactic, with the lines it has
+  to prove and the hypotheses it has to prove them from.
 
 What it costs:
 
@@ -151,8 +153,10 @@ What it costs:
 
 - **size.** The overlay is the one part of a manifest that grows with the size
   of the *formalization* rather than with the size of the correspondence.
-  `build` reports what it added, measured rather than estimated — 116 KB for
-  the 1 845 tokens of the tracked example.
+  `build` reports what it added, measured rather than estimated — 125 KB for
+  the 1 845 tokens and 74 proof states of the tracked example. The states are
+  9 KB of that: they are recorded per *tactic*, and a development has an order
+  of magnitude fewer tactics than tokens.
 
   Most of that is text, and most of the text is Lean's own: the docstring of
   `simp`, the signature of `Nat.succ`. It is therefore interned **once for the

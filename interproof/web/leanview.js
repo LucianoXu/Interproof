@@ -187,7 +187,7 @@ function pieces(lines, sem) {
 /* Every class SubVerso gives a token is kept as it gives it — a stylesheet
    written for Verso's output styles this pane too — and the ones this reader
    adds say what it can *do* with the token rather than what it is. */
-function tokenHTML(src, col, len, a, id, sem) {
+function tokenHTML(src, col, len, a, id, sem, st) {
   var at = sem.attrs[a] || {};
   var body = esc(src.slice(col, col + len));
   var cls = str(at.c) || "unknown";
@@ -205,12 +205,45 @@ function tokenHTML(src, col, len, a, id, sem) {
   var key = name && api.full && api.full(name);
   if (key && !at.def) { cls += " ref"; extra += ' data-def="' + attr(key) + '"'; }
   else if (at.def) cls += " isdef";
+  // the proof state this token sits in, so hovering anywhere on a tactic
+  // answers rather than only hovering its first character
+  if (st >= 0) { cls += " tac"; extra += ' data-g="' + st + '"'; }
 
   return '<span class="' + attr(cls) + '"' + extra + ">" + body + "</span>";
 }
 
+/* Which proof state a token sits in, if any.
+
+   Tactic spans nest — `by` encloses the whole proof, a case arrow encloses its
+   branch — so a position can be inside several, and the tightest is the one
+   that answers.  Anything else and every token in a proof would report the
+   state of the outermost `by`. */
+function states(lines, sem) {
+  var by = [], t = sem.tacs || [];
+  for (var i = 0; i < t.length; i += 4) {
+    var ln = t[i];
+    if (ln >= 1 && ln <= lines.length) {
+      (by[ln] = by[ln] || []).push([t[i + 1], t[i + 2], t[i + 3]]);
+    }
+  }
+  return by;
+}
+
+function stateAt(row, col, len) {
+  if (!row) return -1;
+  var best = -1, span = Infinity;
+  for (var i = 0; i < row.length; i++) {
+    var a = row[i][0], b = a + row[i][1];
+    if (col >= a && col + len <= b && row[i][1] < span) {
+      span = row[i][1];
+      best = row[i][2];
+    }
+  }
+  return best;
+}
+
 function renderSem(lines, sem) {
-  var by = pieces(lines, sem), out = [];
+  var by = pieces(lines, sem), tac = states(lines, sem), out = [];
   for (var ln = 1; ln <= lines.length; ln++) {
     var src = lines[ln - 1], row = by[ln], at = 0, buf = "";
     if (row) {
@@ -221,7 +254,8 @@ function renderSem(lines, sem) {
         // keeps a stray overlap from duplicating the text of the line
         if (col < at) continue;
         buf += esc(src.slice(at, col));
-        buf += tokenHTML(src, col, len, row[k][2], row[k][3], sem);
+        buf += tokenHTML(src, col, len, row[k][2], row[k][3], sem,
+                         stateAt(tac[ln], col, len));
         at = col + len;
       }
     }
@@ -288,13 +322,54 @@ function cardHTML(el) {
     if (t) where = t.file + ".lean:" + t.line;
   }
 
-  if (!sig && !doc && !where) return "";
+  var goals = el.dataset.g === undefined ? "" : goalHTML(+el.dataset.g);
+
+  if (!sig && !doc && !where && !goals) return "";
+  /* Specific first, reference last.  A signature and a proof state are about
+     *this* position; a docstring is the same paragraph wherever the name
+     occurs, and Lean's own are long — `sorry`'s runs to five hundred words,
+     which put the one thing a reader hovering a `sorry` wanted below the
+     fold. */
   if (sig) h += '<pre class="hsig">' + esc(sig) + "</pre>";
+  h += goals;
   if (doc) h += '<div class="hdoc">' + cite(ticks(esc(doc))) + "</div>";
   if (where) {
     h += '<div class="hwhere" data-def="' + attr(key) + '">' + esc(where) + "</div>";
   }
   return h;
+}
+
+/* The proof state, which is the one thing on this page that is not in the
+   sources at all.
+
+   It is the state the tactic *left*, which is what SubVerso records and what
+   this says — hover `intro s t hP h` and you see what `intro` did.  What a
+   step was applied *to* is the line above it, which is where a reader looks
+   anyway: hovering a case arrow shows that branch's obligation, and the
+   `exact` under it closes with none left.  Deriving "before" from the
+   preceding step would be right down a tactic block and wrong across every
+   branch boundary, so it is not claimed. */
+function goalHTML(st) {
+  if (!SEM || !SEM.states) return "";
+  var gs = SEM.states[st];
+  if (!gs) return "";
+  if (!gs.length) {
+    return '<div class="hgoals none"><i>no goals left</i></div>';
+  }
+  var h = '<div class="hgoals"><i>' +
+    (gs.length === 1 ? "the goal after this step"
+                     : gs.length + " goals after this step") + "</i>";
+  gs.forEach(function (gi) {
+    var g = SEM.goals[gi];
+    if (!g) return;
+    h += '<div class="goal">';
+    if (g.n !== undefined) h += '<div class="gname">' + esc(str(g.n)) + "</div>";
+    (g.h || []).forEach(function (x) {
+      h += '<div class="hyp">' + esc(str(x)) + "</div>";
+    });
+    h += '<div class="concl">' + esc(str(g.c)) + "</div></div>";
+  });
+  return h + "</div>";
 }
 
 function showCard(el) {
@@ -352,7 +427,7 @@ function wire() {
   if (!src) return;
 
   src.addEventListener("mouseover", function (ev) {
-    var el = ev.target.closest("[data-t],[data-def]");
+    var el = ev.target.closest("[data-t],[data-def],[data-g]");
     if (!el) return;
     markOccurrences(el.dataset.b);
     if (el === held) { clearTimeout(hideT); return; }
@@ -363,7 +438,7 @@ function wire() {
   });
 
   src.addEventListener("mouseout", function (ev) {
-    var el = ev.target.closest("[data-t],[data-def]");
+    var el = ev.target.closest("[data-t],[data-def],[data-g]");
     if (!el) return;
     clearTimeout(showT);
     if (!ev.relatedTarget || !ev.relatedTarget.closest || !ev.relatedTarget.closest(".lsrc")) {
@@ -409,8 +484,16 @@ function load(name, text, sem, strs) {
   shown = f;
   SEM = f.sem;
   BIND = f.bind;
+  /* The gutter is where an editor puts "there is something on this line", and
+     it is the only place a marker costs the code nothing: the text itself is
+     already carrying colour, links and occurrence highlighting, and one more
+     mark in it would be one too many. */
+  var hasTac = [], tt = (f.sem && f.sem.tacs) || [];
+  for (var j = 0; j < tt.length; j += 4) hasTac[tt[j]] = 1;
   var gut = [];
-  for (var i = 1; i <= f.lines; i++) gut.push(i);
+  for (var i = 1; i <= f.lines; i++) {
+    gut.push(hasTac[i] ? '<span class="gtac">' + i + "</span>" : String(i));
+  }
   host.innerHTML =
     '<pre class="lgut">' + gut.join("\n") + "</pre>" +
     '<pre class="lsrc' + (f.rich ? " sem" : "") + '">' + f.html + "</pre>" +

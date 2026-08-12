@@ -48,7 +48,7 @@ from .lean import import_prefix
 
 # Bumped whenever `translate` changes what it produces, so a cache written by
 # an older Interproof is re-extracted rather than trusted.
-OVERLAY = 2
+OVERLAY = 4
 
 LAKEFILES = ("lakefile.toml", "lakefile.lean")
 
@@ -187,7 +187,7 @@ def _u16(s: str) -> int:
     return len(s.encode("utf-16-le")) // 2
 
 
-def _attr(kind: object) -> dict:
+def _attr(kind: object, content: str = "") -> dict:
     """One `Token.Kind` as the viewer needs it.
 
     `c` is the class, `h` what a hover shows, `d` its docstring, `n` the name a
@@ -198,6 +198,14 @@ def _attr(kind: object) -> dict:
     ctor, body = _ctor(kind)
     out: dict = {"c": CLASS.get(ctor, "unknown")}
     f = _fields(body, FIELDS.get(ctor, ()))
+
+    # `sorry` is a keyword like any other to Lean's grammar, and the single
+    # most important token on the page to a reader here: this whole viewer
+    # exists to show what is and is not mechanized, and a `sorry` is the
+    # difference.  The source-text path has always marked it; elaboration must
+    # not be the thing that takes the mark away.
+    if content == "sorry":
+        out["c"] += " srr"
 
     if ctor in ("keyword", "delim", "operator", "bracket", "separator"):
         _, occ, docs = f
@@ -302,6 +310,10 @@ class _Pool:
         self.ix: dict[str, int] = {}
         self.strs: list[str] = []
         self.six: dict[str, int] = {}
+        self.goals: list[dict] = []
+        self.gix: dict[str, int] = {}
+        self.states: list[list[int]] = []
+        self.six2: dict[str, int] = {}
 
     def text(self, v: str) -> int:
         if v not in self.six:
@@ -318,15 +330,71 @@ class _Pool:
             self.items.append(packed)
         return self.ix[k]
 
+    # --- proof states -----------------------------------------------------
+    #
+    # Interned at both levels for the same reason the attributes are.  A goal
+    # recurs across the tactics that do not change it — most tactics change one
+    # thing about one goal — and a whole *state* recurs wherever a proof passes
+    # through the same position twice.  On the tracked example: 74 tactic
+    # positions, 47 distinct states.
 
-def _flatten(data: dict, key: int, pool: _Pool, memo: dict) -> tuple[str, list]:
-    """One node of SubVerso's export DAG, as text and the tokens inside it.
+    def goal(self, hyps: list[int], concl: int, name: str) -> int:
+        g: dict = {"h": hyps, "c": concl}
+        if name:
+            g["n"] = self.text(name)
+        k = json.dumps(g, sort_keys=True)
+        if k not in self.gix:
+            self.gix[k] = len(self.goals)
+            self.goals.append(g)
+        return self.gix[k]
 
-    Returns `(text, [(offset, length, attr), …])` with offsets relative to the
-    start of this node, so a shared subtree is walked once and reused wherever
-    it occurs.  The export is deduplicated — that is its whole purpose — and a
-    walk that re-expanded every occurrence would be quadratic on the proofs
-    that are shared the most.
+    def state(self, goals: list[int]) -> int:
+        k = json.dumps(goals)
+        if k not in self.six2:
+            self.six2[k] = len(self.states)
+            self.states.append(goals)
+        return self.six2[k]
+
+
+def _goal(data: dict, gk: int, pool: _Pool, memo: dict) -> int:
+    """One goal — its hypotheses and what is left to prove — as an index.
+
+    Rendered to text rather than kept as highlighted code.  A proof state is
+    read in a card a few lines tall, not scrolled and not clicked through, and
+    carrying every hypothesis as its own token stream would cost more than the
+    entire rest of the overlay to colour something nobody navigates.
+    """
+    g = data["goals"].get(str(gk))
+    if g is None:
+        raise SubVersoError(f"dangling goal key {gk}")
+    hyps = []
+    for h in g.get("hypotheses") or []:
+        names = []
+        for n in h.get("names") or []:
+            tok = data["tokens"].get(str(n))
+            if tok:
+                names.append(tok.get("content", ""))
+        ty, _, _ = _flatten(data, h["typeAndVal"], pool, memo)
+        hyps.append(pool.text(" ".join(names) + " : " + ty))
+    concl, _, _ = _flatten(data, g["conclusion"], pool, memo)
+    return pool.goal(hyps, pool.text(g.get("goalPrefix", "⊢ ") + concl),
+                     g.get("name") or "")
+
+
+def _flatten(data: dict, key: int, pool: _Pool, memo: dict) -> tuple[str, list, list]:
+    """One node of SubVerso's export DAG, as text, tokens and proof states.
+
+    Returns `(text, [(offset, length, attr), …], [(offset, length, state), …])`
+    with offsets relative to the start of this node, so a shared subtree is
+    walked once and reused wherever it occurs.  The export is deduplicated —
+    that is its whole purpose — and a walk that re-expanded every occurrence
+    would be quadratic on the proofs that are shared the most.
+
+    The third list is the tactics.  Their own `startPos`/`endPos` are *not*
+    used: they do not agree with offsets into the file — on the tracked example
+    a node reading `exact while_rule ih` gives a range landing inside a comment
+    twenty lines away — so a tactic is placed by the same walk that places
+    every token, and is therefore exactly as right as they are.
     """
     if key in memo:
         return memo[key]
@@ -342,26 +410,37 @@ def _flatten(data: dict, key: int, pool: _Pool, memo: dict) -> tuple[str, list]:
         if tok is None:
             raise SubVersoError(f"dangling token key {tk}")
         content = tok.get("content", "")
-        got = (content, [(0, _u16(content), pool.add(_attr(tok.get("kind"))))]
-               if content else [])
+        got = (content,
+               [(0, _u16(content), pool.add(_attr(tok.get("kind"), content)))]
+               if content else [], [])
     elif ctor in ("text", "unparsed"):
-        got = (_fields(body, ("str",))[0] or "", [])
+        got = (_fields(body, ("str",))[0] or "", [], [])
     elif ctor == "seq":
-        parts, spans, at = [], [], 0
+        parts, spans, tacs, at = [], [], [], 0
         for k in _fields(body, ("highlights",))[0] or []:
-            t, ss = _flatten(data, k, pool, memo)
+            t, ss, tt = _flatten(data, k, pool, memo)
             spans.extend((o + at, n, a) for o, n, a in ss)
+            tacs.extend((o + at, n, s) for o, n, s in tt)
             parts.append(t)
             at += _u16(t)
-        got = ("".join(parts), spans)
+        got = ("".join(parts), spans, tacs)
     elif ctor == "span":
         got = _flatten(data, _fields(body, ("info", "content"))[1], pool, memo)
     elif ctor == "tactics":
-        got = _flatten(
-            data, _fields(body, ("info", "startPos", "endPos", "content"))[3],
-            pool, memo)
+        f = _fields(body, ("info", "startPos", "endPos", "content"))
+        text, spans, tacs = _flatten(data, f[3], pool, memo)
+        # The state belongs to the tactic's *head* — its first line — not to
+        # everything the tactic encloses.  A `by` block encloses the whole
+        # proof, and a state hung on all of it would answer for every token
+        # inside with the state of the outermost thing.  Nesting still
+        # overlaps at the head when a proof is written on one line, and the
+        # viewer takes the tightest.
+        head = text.find("\n")
+        head = _u16(text) if head < 0 else _u16(text[:head])
+        state = pool.state([_goal(data, g, pool, memo) for g in f[0] or []])
+        got = (text, spans, [(0, head, state)] + tacs)
     elif ctor == "point":
-        got = ("", [])
+        got = ("", [], [])
     else:
         raise SubVersoError(f"unknown highlight node {ctor!r}")
 
@@ -372,10 +451,13 @@ def _flatten(data: dict, key: int, pool: _Pool, memo: dict) -> tuple[str, list]:
 def translate(mod: dict, text: str) -> dict:
     """SubVerso's export for one module, as the overlay the viewer reads.
 
-        {"strs":  [ "…", … ],                       # every string, once
-         "attrs": [ {c, h?, d?, n?, b?, def?}, … ],  # values index `strs`
-         "toks":  [line, col, len, attr, …],         # flat, in source order
-         "defs":  [[fully.qualified.name, line], …]}
+        {"strs":   [ "…", … ],                       # every string, once
+         "attrs":  [ {c, h?, d?, n?, b?, def?}, … ],  # values index `strs`
+         "toks":   [line, col, len, attr, …],         # flat, in source order
+         "tacs":   [line, col, len, state, …],        # …and so are the tactics
+         "goals":  [ {h: [str…], c: str, n?: str}, … ],
+         "states": [ [goal, …], … ],                  # what a tactic leaves
+         "defs":   [[fully.qualified.name, line], …]}
 
     `line` is 1-based; `col` and `len` are UTF-16 code units, which is what a
     JavaScript string is indexed in.  The token list is flat because it is the
@@ -400,17 +482,18 @@ def translate(mod: dict, text: str) -> dict:
 
     pool = _Pool()
     with _deep():
-        toks, defs, missed = _scan(data, items, text, pool)
+        toks, tacs, defs, missed = _scan(data, items, text, pool)
 
     if missed and missed == len([i for i in items if isinstance(i, dict)]):
         raise SubVersoError("no command's highlighted text occurs in the "
                             "module — the export does not describe this file")
-    return {"strs": pool.strs, "attrs": pool.items, "toks": toks, "defs": defs,
-            **({"missed": missed} if missed else {})}
+    return {"strs": pool.strs, "attrs": pool.items, "toks": toks,
+            "tacs": tacs, "goals": pool.goals, "states": pool.states,
+            "defs": defs, **({"missed": missed} if missed else {})}
 
 
 def _scan(data: dict, items: list, text: str,
-          pool: _Pool) -> tuple[list[int], list[list], int]:
+          pool: _Pool) -> tuple[list[int], list[int], list[list], int]:
     """Every command of the module, placed in the file it came from."""
     memo: dict = {}
     # character offsets of each line start, for turning the place a command was
@@ -422,13 +505,14 @@ def _scan(data: dict, items: list, text: str,
         at += len(ln) + 1
 
     toks: list[int] = []
+    tacs: list[int] = []
     defs: list[list] = []
     cursor, missed = 0, 0
 
     for item in items:
         if not isinstance(item, dict) or "code" not in item:
             continue
-        code, spans = _flatten(data, item["code"], pool, memo)
+        code, spans, tactics = _flatten(data, item["code"], pool, memo)
         if not code:
             continue
         found = text.find(code, cursor)
@@ -450,9 +534,14 @@ def _scan(data: dict, items: list, text: str,
         # One walk of the command for all of its tokens, not one per token: the
         # spans come out of `_flatten` in source order, so a single cursor
         # crossing the text answers every one of them.
+        # Tokens and tactics are placed by the same cursor, so a tactic's
+        # position is exactly as right as the tokens' are; merged into one
+        # ordered run first, and separated again as each is placed.
+        marks = sorted([(o, n, a, 0) for o, n, a in spans] +
+                       [(o, n, s, 1) for o, n, s in tactics])
         line, col, k, i = base_line, base_col, 0, 0
         first = 0
-        for off, n, a in sorted(spans):
+        for off, n, a, kind in marks:
             while k < off and i < len(code):
                 ch = code[i]
                 i += 1
@@ -462,8 +551,9 @@ def _scan(data: dict, items: list, text: str,
                     col = 0
                 else:
                     col += _u16(ch)
-            toks.extend((line + 1, col, n, a))
-            first = first or line + 1
+            (tacs if kind else toks).extend((line + 1, col, n, a))
+            if not kind:
+                first = first or line + 1
 
         # `defines` is what makes a jump possible at all: SubVerso names a
         # constant in full (`Demo.Store.update`) and this build keys a
@@ -477,7 +567,7 @@ def _scan(data: dict, items: list, text: str,
         for name in item.get("defines") or []:
             defs.append([_name(name), first or base_line + 1])
 
-    return toks, defs, missed
+    return toks, tacs, defs, missed
 
 
 # --------------------------------------------------------------------------
