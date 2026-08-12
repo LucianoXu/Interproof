@@ -1023,22 +1023,83 @@ function firstKey() {
    the manifest is re-fetched, because the difference that matters is between
    two whole manifests and the server should not have to describe it. */
 
-var GEN = null, STAMP = "", ES = null, BAD = false;
+var GEN = null, STAMP = "", ES = null, BAD = false, BUSY = false;
 
 /* a LaTeX error runs for a page and says what it has to say in the first
    lines; the terminal that ran the build has the rest */
 function cut(s, n) { s = String(s); return s.length > n ? s.slice(0, n) + "…" : s; }
 
+/* The lamp answers two questions, and they are not the same question.
+
+   *Is this page following the sources?* — connecting, live, rebuilding,
+   elaborating, offline.  Only a served session has this one, and it is the
+   text.
+
+   *Is the project in good order?* — every citation resolving, or dangling
+   ones, or a build that failed outright.  That is true of a published folder
+   as much as of a live session, and it is the colour of the dot.
+
+   Squeezing both into one channel was the old shape and it lost: a live
+   session with three dangling citations was as green as one with none, and
+   "everything is fine" is exactly what a reader must not be told when a
+   statement has been renamed on one side and not the other. */
+function health() {
+  if (BAD) {
+    return { cls: "bad",
+             why: "the last build failed — this page is the one before it" };
+  }
+  if (!M) return { cls: "idle", why: "" };
+
+  var s = M.stats || {}, sem = s.sem || {}, warn = [];
+  if (s.unresolved) {
+    warn.push(s.unresolved + " dangling citation" +
+              (s.unresolved === 1 ? "" : "s") + ": something is named that no " +
+              "document holds, so one side was renamed and the other was not");
+  }
+  if (s.tex_items && !s.located) {
+    warn.push("no statement could be placed on a page — the documents were " +
+              "not compiled, or -synctex=1 was dropped");
+  }
+  if (sem.on && sem.failed) {
+    warn.push("elaboration was asked for and did not run: " + sem.failed);
+  }
+  if (warn.length) return { cls: "warn", why: warn.join(" · ") };
+  return { cls: "ok", why: "every citation resolves" };
+}
+
 function liveMark(cls, text) {
   if (!liveEl) return;
+  var h = health();
   liveEl.className = "live " + cls;
-  liveEl.innerHTML = "<i></i>" + esc(text + (STAMP ? " · " + STAMP : ""));
+  liveEl.innerHTML = '<i class="' + h.cls + '"></i>' +
+                     esc(text + (STAMP ? " · " + STAMP : ""));
+  // the colour is not self-explanatory, and this page has one way of saying
+  // what a thing means
+  if (h.why) liveEl.setAttribute("data-tip", h.why);
+  else liveEl.removeAttribute("data-tip");
+}
+
+/* A published folder has no connection to report, so it has no lamp — unless
+   there is something wrong with it, which is worth a reader's attention
+   wherever they opened it. */
+function markHealth() {
+  if (BOOT.mode === "live" || !liveEl) return;
+  var h = health();
+  if (h.cls === "ok" || h.cls === "idle") { liveEl.style.display = "none"; return; }
+  liveEl.style.display = "flex";
+  liveMark("", h.cls === "bad" ? "build failed" : "check the citations");
 }
 
 function stamped() {
   var d = new Date();
   STAMP = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
-  liveMark("on", "live");
+  /* Not necessarily "live".  The elaborated pass runs behind this one and its
+     "started" event arrives while this manifest is still being fetched, so a
+     re-render that unconditionally said `live` would announce that the page
+     was up to date while Lean was still several seconds from saying what the
+     types are.  The flag outlives the fetch; the generation that carries the
+     elaborated manifest is what clears it. */
+  liveMark(BUSY ? "wait" : "on", BUSY ? "elaborating" : "live");
 }
 
 /* everything that says where the reader is, and would otherwise be spent by a
@@ -1098,6 +1159,7 @@ function refresh() {
     var was = snapshot(), revs = {};
     DOCS.forEach(function (d) { revs[d.id] = d.rev; });
     ingest(m);
+    markHealth();
     /* Only a document whose bytes moved is dropped.  A Lean edit rebuilds the
        manifest without touching a PDF, and re-parsing it would blank the page
        the reader is looking at to arrive at the same page. */
@@ -1138,9 +1200,14 @@ function connect() {
       return;
     }
     if (BAD) { BAD = false; note(""); }
+    /* Lean has started on the pass behind this one.  Not a new generation —
+       nothing to re-fetch — but the reader is owed the difference between
+       "your edit landed" and "the types on it are still being computed". */
+    if (d.busy === "elaborate") { BUSY = true; liveMark("wait", "elaborating"); return; }
     if (typeof d.gen !== "number") return;
     if (d.gen === GEN) { liveMark("on", "live"); return; }
     GEN = d.gen;
+    BUSY = false;              // a new generation is a pass that finished
     refresh();
   };
 }
@@ -1453,6 +1520,7 @@ function boot() {
     ingest(m);
     note("");
     renderStats();
+    markHealth();
     var opened = start(decodeURIComponent((location.hash || "").slice(1)));
     if (BOOT.mode === "live") connect();
     return opened;

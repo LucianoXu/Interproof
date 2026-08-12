@@ -256,6 +256,14 @@ which the states are 9 KB: they go by tactic, and tactics are an order of
 magnitude rarer than tokens. Setup, caching and the size
 argument: **[docs/config.md](docs/config.md#elaborate--what-the-machine-page-can-say-about-itself)**.
 - **Clean** (`c`): the apparatus put away, leaving the two documents.
+- **The lamp**, top left of the controls, answers two questions at once and
+  keeps them apart. Its **colour is the project**: green when every citation
+  resolves, amber when the correspondence has a hole it can name — dangling
+  citations, nothing placed on a page, elaboration asked for and not run — and
+  rust when the build failed outright. Its **text is the session**: `live`,
+  `rebuilding`, `elaborating`, `offline`. Hover it for the reason. A published
+  folder has no session to report, so it shows no lamp — unless the project is
+  not green, which is worth saying wherever the folder was opened.
 - `/` filter — it searches both indexes at once, by statement, by declaration
   and by file name, and shows what it found in each · `j`/`k` move · `h`/`l`
   fold and unfold the branch you are in · `a` formalized · `c` clean · the URL
