@@ -296,17 +296,20 @@ header {
      through the kind badge.  One variable now, and the spine of depth `d`
      falls under the twisty of the row that owns it. */
   left: calc(var(--d) * var(--step) + 5px); width: 1px;
-  background: var(--paper-2);
+  background: var(--rule);
 }
-/* The spine keeps one weight.  It used to thicken to 2px on a row carrying a
-   citation and on the selected one, which was legible while it was a marker at
-   each row's own indent — but it is the tree's guide now, and 109 of the
-   example's 131 rows carry a citation, so the thin line became the exception
-   and the column looked like it changed gauge at random.  Hue still varies,
-   which costs the geometry nothing, and the badge, the name and the count all
-   say `has` already. */
-.itm.has::before { background: var(--rust); }
-.row.sel::before { background: var(--ink); }
+/* The spine keeps one weight *and* one colour.
+   It used to thicken to 2px on a row carrying a citation and on the selected
+   one — legible while it was a status stripe at each row's own indent, wrong
+   once the same element became the tree's guide, since 109 of the example's
+   131 rows carry a citation and the thin line was the exception.
+   Equalising the width was not enough: measured against the paper, `--rust`
+   is a 5.19:1 line and `--paper-2` a 1.15:1 one, and at a single pixel the
+   contrast *is* the weight — one still looked drawn twice as heavy as the
+   other.  So the guide is `--rule`, the sheet's own line colour, everywhere.
+   Nothing is lost: `has` is said by the badge's colour and weight, the name's
+   colour and the count's, and the selection by the row's background, its
+   bolder name and its mark at the rail's edge. */
 
 /* The selected row is marked at the rail's edge instead — clear of the tree,
    in one place whatever the depth, and it reads as "you are here" rather than
