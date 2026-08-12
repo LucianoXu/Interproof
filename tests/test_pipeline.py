@@ -229,6 +229,43 @@ class ManifestTests(unittest.TestCase):
                              self.man["tex"][part]["rect"]["end_page"],
                              f"{part} should sit on one page")
 
+    @unittest.skipUnless(HAVE_LATEX and HAVE_TEXT, "needs latexmk and PyMuPDF")
+    def test_spans_of_one_line_are_measured_apart(self):
+        """The reason step 3 exists.
+
+        `def:aeval:arith`'s three equations are separated by `\\qquad` inside
+        one `\\[…\\]`: they share a typeset line, and SyncTeX has one box for
+        all of them.  The marked build measures each, so they must come back
+        on the same line, in source order, not overlapping — and each must be
+        narrower than the line they sit on.
+        """
+        parts = ["paper::def:aeval:arith:" + p for p in ("lit", "var", "add")]
+        boxes = []
+        for k in parts:
+            it = self.man["tex"].get(k)
+            self.assertIsNotNone(it, f"{k} is missing")
+            self.assertTrue(it["rects"], f"{k} was not measured by the marked build")
+            self.assertEqual(len(it["rects"]), 1, f"{k} should not wrap")
+            boxes.append(it["rects"][0])
+
+        self.assertEqual(len({b["page"] for b in boxes}), 1, "all on one page")
+        self.assertEqual(len({round(b["top"], 1) for b in boxes}), 1,
+                         "all on one typeset line — that is the whole point")
+        for a, b in zip(boxes, boxes[1:]):
+            self.assertLess(a["x"] + a["w"], b["x"],
+                            "measured spans overlap; the regions are wrong")
+        line = self.man["tex"]["paper::def:aeval:arith"]["rect"]
+        for b, k in zip(boxes, parts):
+            self.assertLess(b["w"], line["w"], f"{k} is as wide as the whole clause")
+
+    def test_parts_of_one_statement_get_different_tints(self):
+        """A colour is what tells three spans of one line apart, and what
+        carries a part across the gutter."""
+        sib = [it for it in self.man["tex"].values()
+               if it["kind"] == "anchor" and it["parent"] == "def:aeval:arith"]
+        self.assertEqual(len(sib), 3)
+        self.assertEqual(sorted(it["tint"] for it in sib), [0, 1, 2])
+
     def test_module_and_declaration_citations_both_occur(self):
         owners = {l["decl"] is None for l in self.man["links"]}
         self.assertEqual(owners, {True, False},

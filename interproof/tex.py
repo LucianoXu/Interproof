@@ -42,6 +42,11 @@ class TexItem:
     rect: dict | None = None                            # synctex box in the PDF
     proof_rect: dict | None = None
     parent: str = ""         # for an anchor, the statement it is a part of
+    # A span measured by the marked build: the exact regions it covers, which
+    # for a wrapped span is more than one.  `rect` stays the bounding box, so
+    # everything that only needs somewhere to scroll keeps working.
+    rects: list[dict] | None = None
+    tint: int = -1           # which colour distinguishes this part from its siblings
 
 
 def read_braced(s: str, open_idx: int) -> tuple[str, int]:
@@ -114,6 +119,24 @@ def anchors_in(text: str) -> list[tuple[int, str, str]]:
     return [(text.count("\n", 0, m.start()) + 1, m.group("path"),
              m.group("text") or "")
             for m in ANCHOR_RE.finditer(text)]
+
+
+def target_line(lines: list[str], ln: int, want: str) -> int:
+    """The source line a directive is about.
+
+    The next line carrying content, or — when the directive quotes text — the
+    next line that contains it.  Shared with the marked build, because the two
+    must agree on which line a span is on or the marker goes somewhere the
+    reader is not looking.  `lines` is the comment-stripped source, so a
+    directive never claims another directive.
+    """
+    for k in range(ln, len(lines)):
+        if not lines[k].strip():
+            continue
+        if want and want not in lines[k]:
+            continue
+        return k + 1
+    return ln
 
 
 def parse_file(path: Path, doc: str, rel: str, start_order: int,
@@ -232,30 +255,25 @@ def _anchors(directives: list[tuple[int, str, str]], items: list[TexItem],
         return out
     owners = [it for it in items if it.end_line > it.line]
 
-    def target(ln: int, want: str) -> int:
-        """The line the directive is about: the next one carrying content, or
-        the next one containing the quoted text."""
-        for k in range(ln, len(lines)):
-            body = lines[k].strip()
-            if not body or ANCHOR_RE.match(lines[k]):
-                continue
-            if want and want not in lines[k]:
-                continue
-            return k + 1
-        return ln
-
-    placed = [(target(ln, want), path) for ln, path, want in directives]
+    placed = [(target_line(lines, ln, want), path)
+              for ln, path, want in directives]
     placed.sort()
     for k, (at, path) in enumerate(placed):
-        # the statement it is inside, innermost first
-        parent = ""
-        best = None
+        # The parent is read off the *path*: `def:aeval:arith:lit` is a part of
+        # `def:aeval:arith`, which is itself a part of `def:aeval`.  Taking the
+        # enclosing environment instead would make every depth a sibling of
+        # every other, and the colours that tell three spans of one line apart
+        # would be shared out across a whole definition.
+        parent = path.rsplit(":", 1)[0]
+        stop = placed[k + 1][0] - 1 if k + 1 < len(placed) else 0
+        # the statement it is inside, innermost first — for its extent and its
+        # place in the index, which are facts about where it sits, not about
+        # what it is a part of
+        own, best = None, None
         for it in owners:
             if it.line <= at <= it.end_line and (best is None
                                                  or it.end_line - it.line < best):
-                parent, best = it.label, it.end_line - it.line
-        stop = placed[k + 1][0] - 1 if k + 1 < len(placed) else 0
-        own = next((it for it in owners if it.label == parent), None)
+                own, best = it, it.end_line - it.line
         if own is not None:
             stop = min(stop or own.end_line - 1, own.end_line - 1)
         order += 1

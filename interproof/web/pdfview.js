@@ -218,18 +218,24 @@ function clear() {
 /* one band per page the item spans */
 function band(rect, cls) {
   var d = docs[cur], out = [];
-  for (var p = rect.page; p <= rect.end_page; p++) {
+  var end = rect.end_page || rect.page;
+  // A statement is banded loosely, the way a highlighter covers a paragraph.
+  // A span measured to the point is banded tightly: at 7pt either side the
+  // three parts of one display line would grow into each other and the
+  // precision the marked build was run for would be given straight back.
+  var px = rect.precise ? 1.5 : 7, py = rect.precise ? 1 : 4;
+  for (var p = rect.page; p <= end; p++) {
     var pg = host.querySelector('.pg[data-i="' + (p - 1) + '"]');
     if (!pg) continue;
     var vp = d.viewports[p - 1];
     var top = p === rect.page ? rect.top : 0;
-    var bot = p === rect.end_page ? rect.bottom : vp.height;
+    var bot = p === end ? rect.bottom : vp.height;
     var el = document.createElement("div");
-    el.className = cls;
-    el.style.left = ((rect.x - 7) / vp.width * 100) + "%";
-    el.style.width = ((rect.w + 14) / vp.width * 100) + "%";
-    el.style.top = ((top - 4) / vp.height * 100) + "%";
-    el.style.height = ((bot - top + 8) / vp.height * 100) + "%";
+    el.className = cls + (rect.tint >= 0 ? " t" + (rect.tint % 6) : "");
+    el.style.left = ((rect.x - px) / vp.width * 100) + "%";
+    el.style.width = ((rect.w + 2 * px) / vp.width * 100) + "%";
+    el.style.top = ((top - py) / vp.height * 100) + "%";
+    el.style.height = ((bot - top + 2 * py) / vp.height * 100) + "%";
     pg.appendChild(el);
     out.push(el);
   }

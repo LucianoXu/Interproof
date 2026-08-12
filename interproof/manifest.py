@@ -535,7 +535,69 @@ def attach_pdf_rects(cfg: Config, items: dict[str, TexItem], *,
             it.proof_rect = (st.rect(it.file, it.line, it.proof_end)
                              if it.proof_end else None)
             found += bool(it.rect)
+
+        found += attach_spans(cfg, d, items, quiet=quiet)
+
+    tint_siblings(items)
     return found
+
+
+def attach_spans(cfg: Config, d: Document, items: dict[str, TexItem], *,
+                 quiet: bool = False) -> int:
+    """Replace the line-granular box of a quoted anchor with its real one.
+
+    Three equations separated by `\\qquad` inside one display share a typeset
+    line, and SyncTeX has one box for all of them.  `savepos` asks TeX where
+    each actually landed, by compiling a marked copy of the project that the
+    reader never sees.  It is only run when a document carries a quoted anchor,
+    because it costs a second full LaTeX pass.
+
+    When it cannot answer, the anchor keeps the line it already had: coarser
+    than it was written, which is the same bargain the rest of this makes.
+    """
+    from .savepos import locate
+
+    wanted = [it for it in items.values()
+              if it.doc == d.id and it.kind == "anchor"]
+    if not any(it.label for it in wanted):
+        return 0
+    rects, note = locate(cfg, d, quiet=quiet)
+    if note and not quiet:
+        print(f"!! {d.id}: {note}; those spans keep their line", file=sys.stderr)
+    gained = 0
+    for it in wanted:
+        got = rects.get(it.label)
+        if not got:
+            continue
+        it.rects = [{**r, "end_page": r["page"], "precise": True} for r in got]
+        # one box that contains them all, for anything that only needs
+        # somewhere to scroll to
+        it.rect = {"page": got[0]["page"], "end_page": got[-1]["page"],
+                   "top": min(r["top"] for r in got),
+                   "bottom": max(r["bottom"] for r in got),
+                   "x": round(min(r["x"] for r in got), 2),
+                   "w": round(max(r["x"] + r["w"] for r in got)
+                              - min(r["x"] for r in got), 2)}
+        gained += 1
+    return gained
+
+
+def tint_siblings(items: dict[str, TexItem]) -> None:
+    """Give the parts of one statement different colours.
+
+    Three spans of one line are only legible as three if they are told apart,
+    and the colour is what carries the correspondence across the gutter: the
+    part on the left and the declaration on the right are the same hue.  The
+    index is the sibling's position, so it is stable between builds — a colour
+    that moved when a part was added would be worse than no colour.
+    """
+    groups: dict[tuple[str, str], list[TexItem]] = {}
+    for it in items.values():
+        if it.kind == "anchor":
+            groups.setdefault((it.doc, it.parent), []).append(it)
+    for group in groups.values():
+        for n, it in enumerate(sorted(group, key=lambda x: (x.line, x.label))):
+            it.tint = n
 
 
 # --------------------------------------------------------------------------

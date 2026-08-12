@@ -92,13 +92,15 @@ all of that, and a macro misbehaving inside `mathpartir` or `align` — precisel
 where fine correspondence is wanted — is the worst place to debug.
 
 ```latex
-% @interproof span def:wf:dom = "\dom(\sigma) = W"   general form: quote the source
-% @interproof span def:cmd:while                      shorthand: claim the next line
+% @interproof anchor def:wf:dom = "\dom(\sigma) = W"   quoted: measured to the point
+% @interproof anchor def:cmd:while                      bare: claims the next line
 ```
 
-The general form quotes the source text and Interproof finds it; the shorthand
-claims the following source line. A quoted span that is not found is a dangling
-anchor and is reported — it fails loudly, which is the property that matters.
+One directive, two precisions. Bare, it claims the following source line and is
+located by SyncTeX. Quoted, it names the exact text and is measured by the
+marked build — and when that build cannot be made, it falls back to the line it
+sits on and the reason is printed. A quoted span whose text is not on the line
+is reported, never guessed at.
 
 Ordinal addressing — *"the 2nd `\item`"*, *"premise 3"* — is **rejected**. It
 re-points silently when an author inserts a condition, which is the same
@@ -223,7 +225,9 @@ steps before it have shown it is needed.
 1. **Lean-side members** — done. No geometry, purely additive.
 2. **Anchors on line-addressable things** — done. `% @interproof anchor <path>`
    claims source lines, and SyncTeX locates them with the call it already had.
-3. **`\pdfsavepos` injection** — true inline spans. Not built.
+3. **`\pdfsavepos` injection** — done. A quoted anchor is measured by a marked
+   private copy of the project; the source on disk keeps not one macro, and
+   the PDF the reader is shown is still the clean build.
 
 ### What step 2 measured
 
@@ -240,11 +244,21 @@ came back **both ways**, which is the useful outcome:
   SyncTeX returns **the identical box for all seven lines of the display**.
   Step 2 cannot touch it.
 
-So the demo now carries one of each, on purpose: `paper:def:aeval:arith`
-resolves to a real anchor with a tight rectangle, and `paper:def:cmd:while`
-peels to `def:cmd` because the paper has nowhere finer to point. The second is
-not a failure — it is the graceful degradation the peeling rule exists for, and
-it is what step 3 would upgrade.
+So the demo carries one of each, on purpose: `paper:def:aeval:arith` resolves
+to a real anchor with a tight rectangle, and `paper:def:cmd:while` peels to
+`def:cmd` because the paper has nowhere finer to point — the graceful
+degradation the peeling rule exists for.
+
+**Step 3 then took the case step 2 could not.** `def:aeval:arith`'s three
+equations are `\qquad`-separated inside one `\[…\]`: one typeset line, one
+SyncTeX box for all three. Quoted anchors measure them separately —
+
+    lit  x 169.59 .. 212.50      var  x 237.32 .. 296.59      add  x 321.41 .. 452.25
+
+all on the same baseline, in source order, not overlapping. Reading the PDF's
+text back out of each rectangle returns exactly its own equation. Each is cited
+by the matching constructor of `AExp`, so three constructors of an inductive
+face three equations of one printed line.
 
 The cheap fix for a grammar like `def:cmd` is not always step 3, either:
 rewriting the display as an `align` with one production per row makes it

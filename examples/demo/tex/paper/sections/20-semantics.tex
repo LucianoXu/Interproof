@@ -12,8 +12,11 @@ Evaluation is defined by recursion on syntax, in two clauses.
 % @interproof anchor def:aeval:arith
 \item For the arithmetic expressions of \Cref{def:aexp},
 \[
+  % @interproof anchor def:aeval:arith:lit = "\sem{n}\sigma = n"
   \sem{n}\sigma = n, \qquad
+  % @interproof anchor def:aeval:arith:var = "\sem{x}\sigma = \sigma(x)"
   \sem{x}\sigma = \sigma(x), \qquad
+  % @interproof anchor def:aeval:arith:add = "\sem{a_1 + a_2}\sigma = \sem{a_1}\sigma + \sem{a_2}\sigma"
   \sem{a_1 + a_2}\sigma = \sem{a_1}\sigma + \sem{a_2}\sigma .
 \]
 % @interproof anchor def:aeval:bool

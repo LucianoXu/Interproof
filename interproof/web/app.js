@@ -691,11 +691,20 @@ function paperShow(keys, focus) {
 
   /* only the focused document can be shown at once */
   var same = keys.filter(function (k) { return TEX[k] && TEX[k].doc === it.doc; });
-  var rects = same.map(function (k) {
+  /* An anchor measured by the marked build covers its real regions, which for
+     a wrapped span is more than one; drawing only the bounding box would put
+     the highlight over two neighbours it does not name.  The tint travels with
+     each region, so three parts of one line read as three. */
+  var rects = [], idx = 0;
+  same.forEach(function (k) {
     var t = TEX[k];
-    return (state.proof && t.proof_rect) ? t.proof_rect : t.rect;
+    if (k === keys[focus]) idx = rects.length;
+    var use = (state.proof && t.proof_rect) ? [t.proof_rect]
+              : (t.rects && t.rects.length ? t.rects : [t.rect]);
+    use.forEach(function (r) {
+      if (r) rects.push(t.tint >= 0 ? Object.assign({ tint: t.tint }, r) : r);
+    });
   });
-  var idx = same.indexOf(keys[focus]);
 
   return openPDF(it.doc, located(it.doc)).then(function (ok) {
     if (!ok) return;

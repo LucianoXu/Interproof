@@ -17,8 +17,11 @@ namespace Demo
 
 /-- Arithmetic expressions: paper:def:aexp. -/
 inductive AExp where
+  /-- paper:def:aeval:arith:lit -/
   | lit : Nat → AExp
+  /-- paper:def:aeval:arith:var -/
   | var : Var → AExp
+  /-- paper:def:aeval:arith:add -/
   | add : AExp → AExp → AExp
   deriving Repr
 
