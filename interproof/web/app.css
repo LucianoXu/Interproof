@@ -34,53 +34,17 @@
   --h: 46px;
 
   /* --- how a control says it is one -------------------------------------
-     Everything a reader can click is drawn from these, and the three UI
-     variants below are almost entirely a matter of setting them differently.
-     A first-time reader missing the controls is a failure of exactly this
-     handful of values, not of where the controls are. */
-  --radius:      0px;                /* corners on buttons, chips, fields   */
-  --ctl-bg:      transparent;        /* a control at rest, in the header    */
-  --ctl-bd:      var(--machine-rule);
-  --ctl-fg:      var(--machine-dim);
-  --ctl-hover:   #22221d;            /* and under the pointer               */
-  --chip-bg:     transparent;        /* a chip at rest: on the paper side…  */
-  --chip-bg-m:   transparent;        /* …and on the machine side            */
-  --label-case:  uppercase;          /* the tone of a small label           */
-  --label-track: .09em;
-  --btn-label:   none;               /* the word beside a header icon       */
-  --lift:        none;               /* what a control does on hover        */
-}
-
-/* ==========================================================================
-   UI variants — TEMPORARY, for choosing one
-   ==========================================================================
-   Three readings of the same page, differing in how loudly a control
-   announces itself: Press (hairlines and letterpress, the original), Studio
-   (soft, filled, sentence case), Contrast (labelled, filled, unmissable).
-   Whichever is chosen, the other two and the picker come out. */
-
-:root[data-ui="studio"] {
-  --radius:      5px;
-  --ctl-bg:      #23231e;
-  --ctl-bd:      transparent;
-  --ctl-fg:      #a9a294;
-  --ctl-hover:   #33332b;
-  --chip-bg:     var(--paper-2);
-  --chip-bg-m:   #26261f;
-  --label-case:  none;
-  --label-track: .02em;
-  --lift:        translateY(-1px);
-}
-
-:root[data-ui="contrast"] {
-  --radius:      3px;
-  --ctl-bg:      #2b2a23;
+     Everything a reader can click is drawn from these.  A reader who had not
+     been told could not see what this page could do, and that was a failure
+     of exactly this handful of values: a control is filled, bordered, named,
+     and takes the accent under the pointer — and nothing else does. */
+  --radius:      3px;                  /* corners on buttons, chips, fields */
+  --ctl-bg:      #2b2a23;              /* a control at rest, in the header  */
   --ctl-bd:      #4a483d;
   --ctl-fg:      var(--paper-hi);
-  --ctl-hover:   var(--rust);
-  --chip-bg:     rgba(169,60,22,.10);
-  --chip-bg-m:   rgba(221,139,60,.13);
-  --btn-label:   inline;
+  --ctl-hover:   var(--rust);          /* and under the pointer             */
+  --chip-bg:     rgba(169,60,22,.10);  /* a chip at rest: on the paper side */
+  --chip-bg-m:   rgba(221,139,60,.13); /* … and on the machine side         */
 }
 
 * { box-sizing: border-box; }
@@ -124,8 +88,8 @@ header {
   color: var(--machine-fg);
   font-family: var(--mono);
   font-size: 11px;
-  letter-spacing: var(--label-track);
-  text-transform: var(--label-case);
+  letter-spacing: .09em;
+  text-transform: uppercase;
 }
 
 .brand {
@@ -153,27 +117,27 @@ header {
 .hbtn {
   position: relative;
   display: inline-flex; align-items: center; gap: 7px;
-  font: inherit; letter-spacing: var(--label-track); text-transform: var(--label-case);
+  font: inherit; letter-spacing: .09em; text-transform: uppercase;
   background: var(--ctl-bg); border: 1px solid var(--ctl-bd); border-radius: var(--radius);
   color: var(--ctl-fg);
   padding: 0 8px; height: 26px; cursor: pointer;
-  transition: background .15s, color .15s, border-color .15s, transform .15s;
+  transition: background .15s, color .15s, border-color .15s;
 }
-.hbtn .lbl { display: var(--btn-label); }
+.hbtn .lbl { display: inline; }
 .hbtn svg {
   width: 16px; height: 16px; flex: none;
   fill: none; stroke: currentColor; stroke-width: 1.4;
   stroke-linecap: round; stroke-linejoin: round;
 }
 .hbtn svg .fill { fill: currentColor; stroke: none; }
-.hbtn:hover { color: var(--paper-hi); background: var(--ctl-hover); border-color: var(--machine-dim); transform: var(--lift); }
+.hbtn:hover { color: var(--paper-hi); background: var(--ctl-hover); border-color: var(--machine-dim); }
 .hbtn:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
 /* a toggle that is on is not a hover state: it stays lit */
 .hbtn.on { color: var(--machine); background: var(--amber); border-color: var(--amber); }
 .hbtn.on:hover { background: var(--amber); color: var(--machine); }
 /* packing an archive takes seconds, and the button is where the reader is
    looking: it reports rather than a dialog appearing over the page */
-.hbtn:disabled { color: var(--machine-dim); border-color: var(--ctl-bd); cursor: default; transform: none; }
+.hbtn:disabled { color: var(--machine-dim); border-color: var(--ctl-bd); cursor: default; }
 .hbtn.busy .lbl { display: inline; }
 
 /* --- what a control is called ------------------------------------------
@@ -328,7 +292,7 @@ header {
 /* --- the nodes ---------------------------------------------------------- */
 
 .nd > .nm {
-  font-size: 9.5px; letter-spacing: .13em; text-transform: var(--label-case);
+  font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase;
   color: var(--ink-faint);
 }
 /* a directory and a file are named, not titled: their own case, kept */
@@ -500,7 +464,7 @@ header {
 
 .crumb {
   font-family: var(--mono); font-size: 10px; letter-spacing: .11em;
-  text-transform: var(--label-case);
+  text-transform: uppercase;
   color: var(--ink-faint);
   display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
 }
@@ -527,7 +491,7 @@ header {
 .vhead {
   flex: none; padding: 11px 24px; border-bottom: 1px solid var(--machine-rule);
   font-family: var(--mono); font-size: 10px; letter-spacing: .13em;
-  text-transform: var(--label-case);
+  text-transform: uppercase;
   color: var(--machine-dim);
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
 }
@@ -541,7 +505,11 @@ header {
   font-family: var(--mono); font-size: 11.7px; line-height: 1.62;
   padding: 14px 0 160px;
 }
-#leanpane pre { margin: 0; tab-size: 2; }
+/* `font-family: inherit` is load-bearing: the user agent sets `monospace` on
+   `pre` itself, and a directly applied declaration beats an inherited one —
+   so without this the machine page renders in whatever generic monospace the
+   browser happens to pick, and never in the font this page carries. */
+#leanpane pre { margin: 0; tab-size: 2; font-family: inherit; }
 
 .lgut {
   text-align: right; padding: 0 12px 0 16px;
@@ -616,27 +584,6 @@ header {
   .pad { padding: 30px 26px 100px; }
 }
 
-/* --- TEMPORARY: the style picker --------------------------------------- */
-.uipick {
-  position: fixed; right: 14px; bottom: 14px; z-index: 55;
-  display: flex; align-items: center; gap: 4px;
-  padding: 5px 6px;
-  background: var(--machine-2); border: 1px solid var(--machine-rule);
-  box-shadow: 0 8px 26px rgba(0,0,0,.45);
-  font-family: var(--mono); font-size: 10px;
-}
-.uipick i {
-  font-style: normal; color: var(--machine-dim); letter-spacing: .12em;
-  padding: 0 5px 0 3px;
-}
-.uipick button {
-  font: inherit; letter-spacing: .06em;
-  background: none; border: 1px solid var(--machine-rule); border-radius: var(--radius);
-  color: var(--machine-fg); padding: 3px 9px; cursor: pointer;
-}
-.uipick button:hover { border-color: var(--machine-dim); background: #22221d; }
-.uipick button.on { background: var(--amber); border-color: var(--amber); color: var(--machine); }
-
 /* --- the help sheet ----------------------------------------------------
    Set as a page rather than as a tooltip: what it has to explain — that the
    two panes are joined by citations somebody wrote in the formal sources — is
@@ -700,30 +647,12 @@ header {
 }
 .hclose:hover { color: var(--ink); border-color: var(--ink-faint); }
 
-/* ==========================================================================
-   UI variants — the few things tokens cannot say
-   ========================================================================== */
-
-/* Studio: the same page with the letterpress mannerisms turned down.  Rows
-   breathe, rules soften, and nothing shouts — the controls are found by
-   being filled rather than by being loud. */
-:root[data-ui="studio"] .row { padding-top: 5px; padding-bottom: 5px; }
-:root[data-ui="studio"] .nd.root { border-top-color: var(--paper-2); }
-:root[data-ui="studio"] .nd > .nm { font-size: 10px; letter-spacing: .04em; }
-:root[data-ui="studio"] .itm .nm { font-size: 11.5px; }
-:root[data-ui="studio"] .row:hover { background: #efe7d8; }
-:root[data-ui="studio"] .brand b { letter-spacing: .06em; }
-:root[data-ui="studio"] .hbtn { height: 28px; padding: 0 9px; }
-:root[data-ui="studio"] .searchwrap { border-bottom-color: var(--paper-2); }
-
-/* Contrast: nothing is left to be noticed.  The header controls carry their
-   names, every chip is filled, and the row under the pointer takes the
-   accent rather than a shade of the paper. */
-:root[data-ui="contrast"] .hbar { gap: 14px; }
-:root[data-ui="contrast"] .hbtn { padding: 0 10px; font-weight: 600; }
-:root[data-ui="contrast"] .row:hover { background: rgba(169,60,22,.09); }
-:root[data-ui="contrast"] .itm.has .kd { font-weight: 600; }
-:root[data-ui="contrast"] .chip { border-color: rgba(169,60,22,.45); }
-:root[data-ui="contrast"] .vhead .chip { border-color: rgba(221,139,60,.5); }
-:root[data-ui="contrast"] .rbtn { border-color: var(--ink-faint); }
-:root[data-ui="contrast"] .nd.root { background: var(--paper-2); }
+/* --- and the few things those tokens cannot say ------------------------- */
+.hbar { gap: 14px; }
+.hbtn { padding: 0 10px; font-weight: 600; }
+.row:hover { background: rgba(169,60,22,.09); }
+.itm.has .kd { font-weight: 600; }
+.chip { border-color: rgba(169,60,22,.45); }
+.vhead .chip { border-color: rgba(221,139,60,.5); }
+.rbtn { border-color: var(--ink-faint); }
+.nd.root { background: var(--paper-2); }

@@ -1320,26 +1320,6 @@ function toggleHelp(on) {
   if (c) c.onclick = function () { toggleHelp(false); };
 }
 
-/* TEMPORARY: the style picker.  It writes `data-ui` on the root element and
-   remembers the choice; every variant is CSS and nothing else reads it. */
-function wirePicker() {
-  var box = $("#uipick");
-  if (!box) return;
-  function set(ui) {
-    document.documentElement.setAttribute("data-ui", ui);
-    try { localStorage.setItem("interproof-ui", ui); } catch (e) { /* private mode */ }
-    box.querySelectorAll("button").forEach(function (b) {
-      b.classList.toggle("on", b.dataset.ui === ui);
-    });
-  }
-  box.querySelectorAll("button").forEach(function (b) {
-    b.onclick = function () { set(b.dataset.ui); };
-  });
-  var was = null;
-  try { was = localStorage.getItem("interproof-ui"); } catch (e) { /* private mode */ }
-  set(was || "press");
-}
-
 function boot() {
   railBody = $("#railbody"); rhead = $("#rhead"); vhead = $("#vhead");
   verso = $("#leanpane"); noteEl = $("#note"); liveEl = $("#live");
@@ -1378,7 +1358,6 @@ function boot() {
   });
 
   wireDownload();
-  wirePicker();
   if (BOOT.mode === "live") { liveEl.style.display = "flex"; liveMark("wait", "connecting"); }
 
   /* Nothing above this point needed the manifest, and nothing below runs
