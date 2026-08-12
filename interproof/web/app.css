@@ -40,6 +40,7 @@
   --ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   --rail: 268px;
+  --step: 11px;        /* one level of the index, indent and spine alike */
   --h: 46px;
 
   /* --- how a control says it is one -------------------------------------
@@ -268,7 +269,7 @@ header {
    nothing about the branch it is on except how deep it sits. */
 .row {
   display: flex; align-items: baseline; gap: 7px;
-  padding: 1.5px 11px 1.5px calc(9px + var(--d) * 9px);
+  padding: 1.5px 11px 1.5px calc(15px + var(--d) * var(--step));
   position: relative; cursor: pointer;
   transition: background .12s;
   animation: rise .4s backwards;
@@ -290,7 +291,11 @@ header {
    says whether it carries any correspondence at all */
 .row::before {
   content: ""; position: absolute; top: 0; bottom: 0;
-  left: calc(var(--d) * 10px + 2px); width: 1px;
+  /* The same step as the indent.  These were 10px and 9px, so the spine
+     converged on the content by a pixel a level and by depth six ran straight
+     through the kind badge.  One variable now, and the spine of depth `d`
+     falls under the twisty of the row that owns it. */
+  left: calc(var(--d) * var(--step) + 5px); width: 1px;
   background: var(--paper-2);
 }
 /* only on the rows that stand for something to read: a branch is a place, and
@@ -310,11 +315,12 @@ header {
 .nd[data-key] > .tw:hover::after { background: var(--paper-2); }
 .nd[data-key] > .tw:hover::before { border-left-color: var(--rust); }
 .nd > .tw::before {
-  content: ""; position: absolute; left: 0; top: 5px;
+  content: ""; position: absolute; left: -5px; top: 50%; margin-top: -3.5px;
   border: 3.5px solid transparent; border-left-color: var(--ink-faint);
   transform-origin: 1.5px 3.5px; transition: transform .12s ease;
 }
 .nd.open > .tw::before { transform: rotate(90deg); }
+/* rotation is about the triangle's own point, so it turns in place */
 /* a file the correspondence never reaches has nothing under it to fold */
 .nd.bare > .tw::before { display: none; }
 
@@ -335,8 +341,8 @@ header {
    the paper's own words into shouting and cost a third of the rail's width in
    letter-spacing. */
 .nd > .nm {
-  font-family: var(--ui);
-  font-size: 11px; letter-spacing: .01em;
+  font-family: var(--mono);
+  font-size: 11px; letter-spacing: 0;
   color: var(--ink-soft);
 }
 .nd.dir > .nm { color: var(--ink-faint); }
@@ -762,10 +768,11 @@ header {
   .pad { padding: 30px 26px 100px; }
 }
 
-/* a sans at the same size reads larger than a mono, and these labels are set
-   small enough that the difference has to be paid back */
-.nd > .nm { font-size: 10px; letter-spacing: .1em; }
-.itm.txt .nm { font-size: 12.5px; }
+/* One family down the whole index, and a branch no larger than what hangs
+   under it.  A sans among monos reads bigger than its size, and .1em of
+   tracking on top of that made `Semantics` loom over the definitions inside
+   it — the parent was 10px and looked like a heading over 12.5px children. */
+.itm.txt .nm { font-size: 11.5px; }
 
 /* --- the help sheet ----------------------------------------------------
    Set as a page rather than as a tooltip: what it has to explain — that the

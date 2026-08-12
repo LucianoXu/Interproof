@@ -566,8 +566,9 @@ function leafHTML(k, depth, ctr) {
     (k.sel ? " sel" : "") + '" data-key="' + esc(k.key) + '"' +
     (TMP[k.key] ? ' data-tmp="1"' : "") +
     ' style="--d:' + depth + ";" + delay(ctr) + '">' +
-    // the kind badge stands where a node's twisty stands: a leaf has nothing
-    // to fold, and the rail is 268px wide
+    // the twisty's column, kept empty: a leaf has nothing to fold, and
+    // without it every name on a level sat 16px left of its siblings that do
+    '<span class="tw"></span>' +
     '<span class="kd">' + esc(k.kd) + "</span>" +
     '<span class="nm">' + esc(k.nm) + "</span>" +
     '<span class="ct">' + esc(k.ct) + "</span></div>";
