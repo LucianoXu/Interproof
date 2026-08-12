@@ -121,6 +121,17 @@ def anchors_in(text: str) -> list[tuple[int, str, str]]:
             for m in ANCHOR_RE.finditer(text)]
 
 
+def span_pattern(want: str) -> "re.Pattern[str]":
+    """A quoted span, matched across source lines.
+
+    Whitespace in the quote matches any whitespace in the source, newlines
+    included, because the thing worth naming is often written across lines:
+    `\\frac{premises}{conclusion}` puts its two arguments on two of them, and a
+    quote that had to fit on one could only ever name half a rule.
+    """
+    return re.compile(r"\s+".join(re.escape(w) for w in want.split()))
+
+
 def target_line(lines: list[str], ln: int, want: str) -> int:
     """The source line a directive is about.
 
@@ -130,13 +141,14 @@ def target_line(lines: list[str], ln: int, want: str) -> int:
     reader is not looking.  `lines` is the comment-stripped source, so a
     directive never claims another directive.
     """
-    for k in range(ln, len(lines)):
-        if not lines[k].strip():
-            continue
-        if want and want not in lines[k]:
-            continue
-        return k + 1
-    return ln
+    if not want:
+        for k in range(ln, len(lines)):
+            if lines[k].strip():
+                return k + 1
+        return ln
+    text = "\n".join(lines)
+    m = span_pattern(want).search(text, sum(len(l) + 1 for l in lines[:ln]))
+    return text.count("\n", 0, m.start()) + 1 if m else ln
 
 
 def parse_file(path: Path, doc: str, rel: str, start_order: int,

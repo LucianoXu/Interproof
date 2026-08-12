@@ -37,7 +37,7 @@ import subprocess
 from pathlib import Path
 
 from .config import Config, Document
-from .tex import anchors_in, strip_comments, target_line
+from .tex import anchors_in, span_pattern, strip_comments, target_line
 
 # One `\pdfsavepos` and one *deferred* `\write`.  Deferred is the whole trick:
 # a non-immediate write is a whatsit executed at shipout, by which time
@@ -146,41 +146,37 @@ def _patch(root: Path, doc_root: Path, main: Path,
         target = root / "src" / os.path.relpath(f, cfg_root)
         if not target.exists():
             continue
-        lines = target.read_text(encoding="utf-8", errors="replace").split("\n")
-        # Offsets are taken against the *unpatched* line and spliced from the
+        source = target.read_text(encoding="utf-8", errors="replace")
+        bad: list[str] = []
+        # Offsets are taken against the *unpatched* text and spliced from the
         # right.  Patching left to right would let a later quote match inside a
         # marker already inserted — `\ipmark{def:aexp:lit(}` contains an `x`,
         # and a production quoted as `x` would be found there instead of in the
-        # grammar.
-        by_line: dict[int, list[tuple[int, int, str]]] = {}
-        bad: list[str] = []
+        # grammar.  Matching is over the whole file rather than a line, because
+        # a `\frac{premises}{conclusion}` puts its two arguments on two lines
+        # and half a rule is not the thing anybody wanted to name.
+        spans: list[tuple[int, int, str]] = []
         for at, path, want in items:
-            if not 1 <= at <= len(lines):
-                continue
-            body = lines[at - 1]
-            hits = [i for i in range(len(body)) if body.startswith(want, i)]
-            if len(hits) != 1:
-                # ambiguous or absent: say so rather than mark the wrong one
-                continue
             if not balanced(want):
                 # A quote that opens a group it does not close cannot be
-                # wrapped: the marker lands between `\frac{…}` and its second
-                # argument and TeX stops on an extra `}`.  One unbalanced
-                # quote fails the whole run, taking every other span with it,
-                # so this is refused here rather than discovered in a log.
+                # wrapped: the marker lands between `\frac`'s arguments and TeX
+                # stops on an extra `}`.  One bad quote fails the whole run and
+                # takes every other span with it, so it is refused here rather
+                # than discovered in a log.
                 bad.append(path)
                 continue
-            by_line.setdefault(at, []).append((hits[0], len(want), path))
+            frm = sum(len(l) + 1 for l in source.split("\n")[:max(at - 1, 0)])
+            hits = list(span_pattern(want).finditer(source, frm))
+            if not hits:
+                continue
+            spans.append((hits[0].start(), hits[0].end(), path))
 
-        for at, spans in by_line.items():
-            body = lines[at - 1]
-            for start, width, path in sorted(spans, reverse=True):
-                body = (body[:start] + r"\ipmark{%s(}" % path
-                        + body[start:start + width] + r"\ipmark{%s)}" % path
-                        + body[start + width:])
-                done += 1
-            lines[at - 1] = body
-        target.write_text("\n".join(lines), encoding="utf-8")
+        for start, end, path in sorted(spans, reverse=True):
+            source = (source[:start] + r"\ipmark{%s(}" % path
+                      + source[start:end] + r"\ipmark{%s)}" % path
+                      + source[end:])
+            done += 1
+        target.write_text(source, encoding="utf-8")
         if bad:
             unbalanced.extend(bad)
 
@@ -228,6 +224,38 @@ def _lines_of(pdf, page: int) -> list[tuple[float, float, float, float]]:
     return sorted(out, key=lambda b: (b[1], b[0]))
 
 
+def _grow(lines, band: tuple[float, float], x0: float, x1: float
+          ) -> tuple[float, float]:
+    """Take in the rows a two-dimensional span also covers.
+
+    `\\pdfsavepos` marks a point on one baseline, and an inference rule is not
+    on one baseline: `\\frac` sets its premises above its conclusion, so a band
+    measured from the baseline alone covers the half below the line and stops.
+
+    A row is absorbed when it is directly above or below and lies *within* the
+    span horizontally.  Containment rather than overlap is what keeps this from
+    eating a paragraph: the numerator of a fraction sits inside the fraction's
+    own width, while the line above a quoted clause runs the width of the text
+    block and is not inside anything.
+    """
+    top, bot = band
+    changed = True
+    while changed:
+        changed = False
+        for (lx0, ly0, lx1, ly1) in lines:
+            if lx0 < x0 - 2 or lx1 > x1 + 2:
+                continue                       # not inside the span
+            h = max(ly1 - ly0, 1.0)
+            # a fraction's two rows nearly touch; separate displays are a
+            # whole line apart, and absorbing across that gap would swallow
+            # the rule below
+            if -h * 0.5 < ly0 - bot <= h * 0.5 and ly1 > bot:
+                bot = ly1; changed = True
+            if -h * 0.5 < top - ly1 <= h * 0.5 and ly0 < top:
+                top = ly0; changed = True
+    return top, bot
+
+
 def _band(lines, x: float, baseline: float) -> tuple[float, float] | None:
     """The typeset line a baseline sits on, as (top, bottom).
 
@@ -237,13 +265,23 @@ def _band(lines, x: float, baseline: float) -> tuple[float, float] | None:
     line's bottom, so containment is asked with a little slack rather than
     exactly.
     """
-    best = None
+    best, near, gap = None, None, 1e9
     for (x0, y0, x1, y1) in lines:
-        if y0 - 1.5 <= baseline <= y1 + 1.5 and x0 - 3 <= x <= x1 + 3:
-            h = y1 - y0
+        if not (y0 - 1.5 <= baseline <= y1 + 1.5):
+            continue
+        h = y1 - y0
+        if x0 - 3 <= x <= x1 + 3:
             if best is None or h < best[1] - best[0]:
                 best = (y0, y1)
-    return best
+        # A mark at the left edge of a `\frac` lands in the white space beside
+        # the conclusion, which is centred and narrower than the rule: no line
+        # contains the point, and requiring containment dropped the span
+        # entirely.  The row is what is wanted, so the nearest one on the
+        # baseline answers when nothing holds the point.
+        d = max(x0 - x, x - x1, 0.0)
+        if d < gap:
+            near, gap = (y0, y1), d
+    return best or (near if gap < 90 else None)
 
 
 def rects_for(pdf_path: Path, points: dict[str, tuple[float, float, int]],
@@ -286,11 +324,12 @@ def rects_for(pdf_path: Path, points: dict[str, tuple[float, float, int]],
             if band_a is None or band_b is None:
                 continue
 
-            if pa == pb and abs(top_a - top_b) < 0.75:     # one line, the usual case
-                out[path] = [{"page": pa, "top": round(band_a[0], 2),
-                              "bottom": round(band_a[1], 2),
-                              "x": round(min(xa, xb), 2),
-                              "w": round(abs(xb - xa), 2)}]
+            if pa == pb and abs(top_a - top_b) < 0.75:     # one baseline
+                lo, hi = min(xa, xb), max(xa, xb)
+                grown = _grow(cache[pa], band_a, lo, hi)
+                out[path] = [{"page": pa, "top": round(grown[0], 2),
+                              "bottom": round(grown[1], 2),
+                              "x": round(lo, 2), "w": round(hi - lo, 2)}]
                 continue
 
             # wrapped: tail of the first line, the lines between, head of the last
