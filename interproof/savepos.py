@@ -224,7 +224,22 @@ def _lines_of(pdf, page: int) -> list[tuple[float, float, float, float]]:
     return sorted(out, key=lambda b: (b[1], b[0]))
 
 
-def _grow(lines, band: tuple[float, float], x0: float, x1: float
+def _bars(pdf, page: int) -> list[tuple[float, float, float]]:
+    """The horizontal rules on a page, as (y, x0, x1).
+
+    A fraction bar is drawn, not typeset, so it is in the drawings rather than
+    in the text — and it is the one thing on the page that says two rows are
+    the two halves of one rule.
+    """
+    out = []
+    for d in pdf[page - 1].get_drawings():
+        r = d["rect"]
+        if r.height < 2.5 and r.width > 8:
+            out.append((r.y0, r.x0, r.x1))
+    return out
+
+
+def _grow(lines, bars, band: tuple[float, float], x0: float, x1: float
           ) -> tuple[float, float]:
     """Take in the rows a two-dimensional span also covers.
 
@@ -232,11 +247,14 @@ def _grow(lines, band: tuple[float, float], x0: float, x1: float
     on one baseline: `\\frac` sets its premises above its conclusion, so a band
     measured from the baseline alone covers the half below the line and stops.
 
-    A row is absorbed when it is directly above or below and lies *within* the
-    span horizontally.  Containment rather than overlap is what keeps this from
-    eating a paragraph: the numerator of a fraction sits inside the fraction's
-    own width, while the line above a quoted clause runs the width of the text
-    block and is not inside anything.
+    A row is absorbed when it lies *within* the span horizontally and a
+    **fraction bar** separates it from what is already banded.  The bar is the
+    exact criterion and a gap is not: on the tracked example a rule's own two
+    rows are 3.8pt apart and two neighbouring displays are 5.7pt apart, which
+    no threshold separates safely — tuned to take the first it also took the
+    second, and `whileTrue` grew upwards through the `ite` rule above it.
+    Containment is still required, so a paragraph, whose lines run the width of
+    the text block, is never inside a span and never absorbed.
     """
     top, bot = band
     changed = True
@@ -245,13 +263,18 @@ def _grow(lines, band: tuple[float, float], x0: float, x1: float
         for (lx0, ly0, lx1, ly1) in lines:
             if lx0 < x0 - 2 or lx1 > x1 + 2:
                 continue                       # not inside the span
+            def barred(a: float, b: float) -> bool:
+                lo, hi = min(a, b) - 2.5, max(a, b) + 2.5
+                return any(lo <= by <= hi and bx1 > x0 and bx0 < x1
+                           for by, bx0, bx1 in bars)
+            # adjacent *and* barred.  The bar alone is not enough: asked over
+            # a wide window it finds some other rule's bar and the band walks
+            # up the page.  Adjacency alone is not enough either — that is the
+            # 3.8-against-5.7 no threshold separates.  Together they are exact.
             h = max(ly1 - ly0, 1.0)
-            # a fraction's two rows nearly touch; separate displays are a
-            # whole line apart, and absorbing across that gap would swallow
-            # the rule below
-            if -h * 0.5 < ly0 - bot <= h * 0.5 and ly1 > bot:
+            if ly1 > bot and 0 <= ly0 - bot < h * 1.5 and barred(bot, ly0):
                 bot = ly1; changed = True
-            if -h * 0.5 < top - ly1 <= h * 0.5 and ly0 < top:
+            if ly0 < top and 0 <= top - ly1 < h * 1.5 and barred(top, ly1):
                 top = ly0; changed = True
     return top, bot
 
@@ -305,6 +328,7 @@ def rects_for(pdf_path: Path, points: dict[str, tuple[float, float, int]],
     out: dict[str, list[dict]] = {}
     with pymupdf.open(pdf_path) as pdf:
         cache: dict[int, list] = {}
+        barcache: dict[int, list] = {}
         heights = {n + 1: pdf[n].rect.height for n in range(pdf.page_count)}
 
         for path in paths:
@@ -326,7 +350,7 @@ def rects_for(pdf_path: Path, points: dict[str, tuple[float, float, int]],
 
             if pa == pb and abs(top_a - top_b) < 0.75:     # one baseline
                 lo, hi = min(xa, xb), max(xa, xb)
-                grown = _grow(cache[pa], band_a, lo, hi)
+                grown = _grow(cache[pa], barcache.setdefault(pa, _bars(pdf, pa)), band_a, lo, hi)
                 out[path] = [{"page": pa, "top": round(grown[0], 2),
                               "bottom": round(grown[1], 2),
                               "x": round(lo, 2), "w": round(hi - lo, 2)}]
