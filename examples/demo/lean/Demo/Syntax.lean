@@ -77,7 +77,7 @@ here because the note's frame discipline is what the rest of the development
 uses, and a declaration is what that discipline is about. -/
 structure Proc where
   /-- The formal parameters — the `x⃗` of note, def:proc:params.  The note
-  carries no anchor by that name, so the path peels to `def:proc` with
+  carries no anchor by that name, so the path peels to the statement with
   `params` recorded: it links today, and sharpens by itself the day the note
   is annotated, with no edit here. -/
   params : List Var

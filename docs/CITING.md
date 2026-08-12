@@ -124,6 +124,21 @@ which is right, because the prose is where you said what it formalizes.
 An `@[simp]` attribute between the docstring and the declaration changes
 nothing.
 
+### In the code
+
+```lean
+theorem update_comm … := by
+  -- Extensionality in `z`: note, lem:update-comm:ext.
+  funext z
+```
+
+A comment inside a declaration's code belongs to that declaration, exactly as
+the docstring does.  Where this earns its keep is a proof: the paper's proof
+carries anchors on its sentences ([ANCHORS.md](ANCHORS.md)), the Lean proof
+cites them on the tactic steps that are those sentences, and the reader
+crosses between the two mid-proof — the chip sits on the step, and the band
+in the paper is the sentence.
+
 ### In module prose
 
 ```lean
@@ -158,9 +173,13 @@ things.
   error and fails the command, which is what makes it worth putting in CI: a
   dangling citation means one side was renamed and the other was not, and the
   cheapest moment to learn that is the commit that did it.
+- **duplicate** — a statement claimed as a correspondence by two declarations.
+  Also an error: a correspondence is one to one, and the claims that are
+  really commentary should say `cf.`.
 - **unlocated** — a statement whose place in the PDF SyncTeX could not find.
   The reader still works; that item cannot be scrolled to.
-- **uncovered** — a statement with no counterpart at all. Not an error: this is
+- **uncovered** — a statement nothing corresponds to. Mentions do not cover:
+  talking about a statement is not formalizing it. Not an error: this is
   the state of the mechanization, and showing it is half of what the reader is
   for. `--strict` turns it into one, for a project that has decided otherwise.
 
@@ -169,11 +188,34 @@ cites says. Citations are trusted. Interproof puts the two texts side by side
 so that a reader can check it in a second, which is a different and more honest
 thing than claiming to have checked it.
 
-There is also **no way to mention a label without citing it.** A comment that
-discusses `def:triple` — "unlike `def:triple`, this version is total" — is read
-as a citation of it, because nothing distinguishes the two. Usually that is
-what you wanted: the declaration really is *about* that statement. When it is
-not, name the statement in words rather than by label.
+## Correspondence and mention
+
+A citation owned by a declaration is a **correspondence**: it claims the
+declaration *is* the statement it names.  A comment that merely discusses one
+— "unlike `def:triple`, this version is total" — is making a different claim,
+and says so by writing `cf.` in the clause before the label:
+
+```lean
+/-- Substitution into an assertion: paper:def:subst.  Composition with an
+update (cf. note, def:update), because assertions here are semantic. -/
+```
+
+A `cf.` citation is a **mention**.  It still links, in both directions, and
+the reader still follows it; it does not claim the declaration formalizes the
+statement, does not count toward coverage, and the viewer dims it and says
+`cf.` on the chip.  Module prose can only mention — no declaration owns it.
+
+**A correspondence is one to one.**  Two declarations claiming the same
+statement contradict each other — at most one of them is it, and the other is
+talking about it — so `interproof check` fails on the pair and names both
+claims with their files and lines; demoting one to `cf.` is the fix.  Two
+qualifications, both deliberate:
+
+- a **path** claims the part it names: `Proc.params` citing `def:proc:params`
+  never competes with `Proc` citing `def:proc`, anchor or no anchor;
+- the **other direction is free**: one declaration may correspond to several
+  statements — a definition that is three equations at once cites all three,
+  and each equation still has exactly one formalization.
 
 ---
 

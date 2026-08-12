@@ -90,7 +90,8 @@ section Examples
 variable (x : Var) (a : AExp)
 
 /-- An assignment run, spelled out: the store afterwards is the note's update
-(note, def:update) at the value the expression takes beforehand. -/
+(cf. note, def:update) at the value the expression takes beforehand.  A
+mention: `Store.update` is the update's formalization, this only uses it. -/
 theorem bigStep_assign_eq (s : Store) :
     BigStep (Cmd.assign x a) s (Store.update s x (a.eval s)) :=
   BigStep.assign s x a

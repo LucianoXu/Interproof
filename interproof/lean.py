@@ -415,8 +415,17 @@ def parse_file(
             if top <= lno <= d.end_line and (tightest is None
                                              or d.end_line - top < tightest):
                 owner, tightest = d.name, d.end_line - top
+        # A citation owned by a declaration claims that the declaration *is*
+        # the statement — a correspondence.  `cf.` in the clause before the
+        # label withdraws the claim: the declaration is *about* the statement,
+        # a mention.  Module prose owns nothing, so it can only mention.  The
+        # 40-character window is the same idea as the marker's 90: the same
+        # clause, not the same file.
+        corr = owner is not None and not re.search(
+            r"\bcf\.", text[max(0, start - 40):start])
         blk = block_of(start)
         return {"label": label, "line": lno, "doc_hint": doc_hint, "decl": owner,
+                "corr": corr,
                 "file": name,
                 # the prose block doing the citing, for when no declaration owns it
                 "block_from": blk[0], "block_to": blk[1],

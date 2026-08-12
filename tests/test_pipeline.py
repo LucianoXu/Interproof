@@ -280,6 +280,44 @@ class ManifestTests(unittest.TestCase):
                          "the example must cite from module prose and from a "
                          "docstring, since the two are banded differently")
 
+    def test_mention_and_correspondence_are_told_apart(self):
+        """`cf.` demotes a citation to a mention, and module prose can only
+        mention — no declaration owns it."""
+        for l in self.man["links"]:
+            if l["decl"] is None:
+                self.assertFalse(l["corr"], f"module prose corresponds: {l}")
+        upd = self.man["by_item"]["note::def:update"]
+        corr = sorted({l["decl"] for l in upd if l["corr"]})
+        self.assertEqual(corr, ["Store.update"],
+                         "exactly one declaration is the update")
+        self.assertTrue(any(not l["corr"] and l["decl"] for l in upd),
+                        "the example should keep a cf. mention of it")
+        # the correspondence comes first, so whoever takes the first citing
+        # declaration gets the one that is the item
+        self.assertTrue(upd[0]["corr"])
+
+    def test_correspondence_is_one_to_one(self):
+        self.assertEqual(M.duplicates(self.man), {},
+                         "two declarations claim one statement")
+
+    def test_coverage_rolls_up_through_anchors(self):
+        """`def:aeval` is formalized clause by clause: nothing corresponds to
+        the statement whole, and it must still count as covered."""
+        own = self.man["by_item"].get("paper::def:aeval", [])
+        self.assertFalse(any(l["corr"] for l in own),
+                         "the roll-up case needs a statement whose own "
+                         "citations are all mentions")
+        self.assertIn("paper::def:aeval", self.man["covered"])
+        self.assertNotIn("paper::lem:bigstep-det", self.man["covered"])
+
+    def test_proof_steps_are_cited_from_the_proof_body(self):
+        """A comment inside the proof belongs to the theorem, and the anchor
+        it cites is a part of the paper's proof."""
+        for part in ("ind", "base", "step"):
+            ls = self.man["by_item"]["paper::thm:soundness:" + part]
+            self.assertEqual([l["decl"] for l in ls], ["soundness"])
+            self.assertTrue(ls[0]["corr"])
+
     def test_modules_are_in_import_order(self):
         seen: set[str] = set()
         for f in self.man["lean"]:

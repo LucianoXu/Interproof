@@ -28,7 +28,8 @@ def Triple (P : Assn) (c : Cmd) (Q : Assn) : Prop :=
   ∀ s t : Store, P s → BigStep c s t → Q t
 
 /-- Substitution into an assertion: paper:def:subst.  Composition with an
-update (note, def:update), because assertions here are semantic. -/
+update (cf. note, def:update), because assertions here are semantic — the
+`cf.` says this declaration is not the update, it only rests on it. -/
 def Assn.subst (P : Assn) (x : Var) (a : AExp) : Assn :=
   fun s => P (Store.update s x (a.eval s))
 

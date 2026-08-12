@@ -28,9 +28,12 @@ If $\vdashH \triple{P}{c}{Q}$ then $\triple{P}{c}{Q}$.
 \end{theorem}
 
 \begin{proof}
+% @interproof anchor thm:soundness:ind = "Induction on the derivation of \Cref{def:derivable}"
 Induction on the derivation of \Cref{def:derivable}. Each case is the
 corresponding lemma of \Cref{sec:hoare} applied to the induction hypotheses:
+% @interproof anchor thm:soundness:base = "\Cref{lem:hoare-skip} and \Cref{lem:hoare-assign} are the base cases"
 \Cref{lem:hoare-skip} and \Cref{lem:hoare-assign} are the base cases, and
+% @interproof anchor thm:soundness:step = "\Cref{lem:hoare-seq}, \Cref{lem:hoare-if}, \Cref{lem:hoare-while} the step cases"
 \Cref{lem:hoare-seq}, \Cref{lem:hoare-if}, \Cref{lem:hoare-while} the step
 cases. Nothing about \Cref{def:bigstep} is used directly here; it has all been
 spent already.

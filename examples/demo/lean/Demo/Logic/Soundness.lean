@@ -43,11 +43,15 @@ inductive Derivable : Assn → Cmd → Assn → Prop where
 
 One case per rule, each discharged by the corresponding lemma of
 `Demo/Logic/Rules`.  The whole content of the theorem is that the list of
-rules in paper:def:derivable and the list of lemmas there are the same list. -/
+rules (cf. paper:def:derivable) and the list of lemmas are the same list —
+`Derivable` is that definition's correspondence; this claims the theorem. -/
 theorem soundness {P Q : Assn} {c : Cmd} (d : Derivable P c Q) : Triple P c Q := by
+  -- The induction of the paper's proof: paper:thm:soundness:ind.
   induction d with
+  -- The two base cases, paper:thm:soundness:base:
   | skip P => exact skip_rule P
   | assign P x a => exact assign_rule P x a
+  -- The three step cases, paper:thm:soundness:step:
   | seq _ _ ih₁ ih₂ => exact seq_rule ih₁ ih₂
   | ite _ _ ih₁ ih₂ => exact if_rule ih₁ ih₂
   | whileDo _ ih => exact while_rule ih

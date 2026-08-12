@@ -13,6 +13,7 @@ var BOOT = window.__IP__ || { mode: "static", manifest: {}, pdfs: {} };
 
 var M = null;                        // the manifest, once it has been read
 var TEX, BY, LEAN, LINKS, DOCS;
+var COVERED;                         // keys something *corresponds* to, anchors rolled up
 var DOC, DOCPOS;                     // id -> document, and its place in reading order
 var DECL, FILE;                      // "File::name" -> decl, "File" -> file record
 var BYNAME, FULL;                    // a written name, and a Lean one, -> decl key
@@ -39,6 +40,11 @@ function why(e) { return (e && e.message) ? e.message : String(e); }
 function ingest(m) {
   M = m;
   TEX = m.tex || {}; BY = m.by_item || {}; LEAN = m.lean || []; LINKS = m.links || [];
+  /* what "formalized" means, decided by the build so the overlay and
+     `interproof check` can never disagree.  An older manifest carries no
+     `covered`; every linked item counts, which is what it meant then. */
+  COVERED = {};
+  (m.covered || Object.keys(BY)).forEach(function (k) { COVERED[k] = 1; });
 
   /* The document set comes from the manifest; this file names no document.
      DOCS is in document order, which is also the order items sort in. */
@@ -627,13 +633,14 @@ function located(doc) {
 function allMarks(doc) {
   if (!state.all) return [];
   return located(doc).filter(function (e) {
-    return (BY[e.key] || []).length && state.marked.indexOf(e.key) < 0;
+    return COVERED[e.key] && state.marked.indexOf(e.key) < 0;
   }).map(function (e) {
-    var n = BY[e.key].length, it = TEX[e.key];
+    var n = (BY[e.key] || []).length, it = TEX[e.key];
     return { key: e.key, rect: e.rect,
              title: it.kind + " " + it.label +
                     (it.title ? " — " + it.title : "") +
-                    " · " + n + " citation" + (n === 1 ? "" : "s") };
+                    " · " + (n ? n + " citation" + (n === 1 ? "" : "s")
+                               : "formalized by its parts") };
   });
 }
 
@@ -833,14 +840,24 @@ function leanHead(keys, focus, groups, total) {
   h += '<span class="vid"><span class="k">' + (d ? d.kind : "module") + "</span>" +
        '<span class="n">' + esc(dname) + "</span>";
   if (d && d.has_sorry) h += '<span class="srrtag">sorry</span>';
+  // this group talks about the item without being it — say so where the
+  // reader is deciding how much to trust what they are looking at
+  var g = groups[keys[focus]];
+  if (g && g.length && !g.some(function (l) { return l.corr; }))
+    h += '<span class="mentag">mention</span>';
   if (d && d.section) h += '<span class="k">' + esc(d.section) + "</span>";
   var at = d ? d.line : (leanRanges(keys[focus], groups[keys[focus]])[0] || {}).from;
   h += '<span class="loc">' + esc(fname) + ".lean:" + (at || "?") + "</span></span>";
 
-  /* a declaration name as a chip, qualified when it lives in another module */
+  /* a declaration name as a chip, qualified when it lives in another module.
+     A group that only mentions the item is dimmed and says `cf.`, so the row
+     itself tells the correspondence from the commentary. */
   function declChip(k) {
     var p = k.split("::");
-    return { key: k, text: (p[0] === fname ? "" : p[0] + ".") + p[1] };
+    var t = (p[0] === fname ? "" : p[0] + ".") + p[1];
+    var men = groups[k] && groups[k].length &&
+              !groups[k].some(function (l) { return l.corr; });
+    return men ? { key: k, text: "cf. " + t, cls: "dim" } : { key: k, text: t };
   }
 
   /* A proof rests on a hundred names, nearly all of them plumbing: `CqState`
@@ -917,7 +934,14 @@ function selectPaper(key) {
     var k = l.file + "::" + (l.decl || "⟨module⟩");
     (groups[k] = groups[k] || []).push(l);
   });
-  var keys = Object.keys(groups).sort();
+  /* the correspondence opens first; the declarations that merely talk about
+     the statement follow, alphabetically, as the `also` row */
+  var keys = Object.keys(groups).sort(function (a, b) {
+    var ca = groups[a].some(function (l) { return l.corr; });
+    var cb = groups[b].some(function (l) { return l.corr; });
+    if (ca !== cb) return ca ? -1 : 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
 
   if (!keys.length) {
     vhead.innerHTML = "no Lean counterpart";
@@ -940,11 +964,13 @@ function selectLean(key) {
   leanShow([key], 0, groups, links.length);
 
   /* every paper item this declaration cites is marked at once; the first
-     decides which document the scroll shows */
+     decides which document the scroll shows, so the correspondence outranks
+     the mentions */
   var cited = [];
-  links.forEach(function (l) {
-    if (cited.indexOf(l.key) < 0 && TEX[l.key] && TEX[l.key].rect) cited.push(l.key);
-  });
+  links.slice().sort(function (a, b) { return (b.corr ? 1 : 0) - (a.corr ? 1 : 0); })
+    .forEach(function (l) {
+      if (cited.indexOf(l.key) < 0 && TEX[l.key] && TEX[l.key].rect) cited.push(l.key);
+    });
   if (!cited.length) {
     rhead.innerHTML = '<div class="crumb"><span>no paper counterpart</span></div>';
     state.marked = [];

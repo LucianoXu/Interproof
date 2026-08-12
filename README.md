@@ -27,10 +27,12 @@
 >    constructor or field cites the clause or production it is, by label path
 >    (paper:def:cmd:while); a part of the paper worth naming exactly gets a
 >    `% @interproof anchor` comment in the LaTeX — a comment, never a macro.
+>    A comment that discusses a statement without formalizing it writes `cf.`
+>    before the label: a correspondence is one to one, a mention is free.
 >    Do not invent correspondence: cite only what a declaration really
 >    formalizes, and leave genuine gaps uncovered — showing them is the point.
 > 5. Run `interproof check` after each pass and finish at zero dangling
->    citations.
+>    citations and zero duplicate correspondences.
 > 6. Run `interproof build -o site`. Hand back site/index.html — the folder is
 >    self-contained, opens with no server, and publishes anywhere a static
 >    site does.
@@ -148,6 +150,11 @@ theorem step_one_sided : … := …
 - **Two documents holding the same label** — a paper and a note both with
   `def:state` — are told apart by naming the document in the same clause:
   `note, def:state`. A label only one document holds needs no ceremony.
+- **A citation claims identity; `cf.` withdraws the claim.** `cf. note,
+  def:update` still links, but as a **mention** — the declaration talks about
+  the statement without being it. A correspondence is one to one: two
+  declarations claiming the same statement fail `interproof check`, which
+  names both so one can be demoted to `cf.`.
 - **Below the statement, a path names a part.** A constructor's docstring
   cites the production it is (`paper:def:cmd:while`), a field the clause it
   is (`note, def:proc:params`). If the paper carries an anchor by that name,

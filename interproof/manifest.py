@@ -97,6 +97,11 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False,
     by_item: dict[str, list[dict]] = {}
     for l in links:
         by_item.setdefault(l["key"], []).append(l)
+    # the correspondence first, mentions after: whoever takes the first
+    # citing declaration — the viewer does — gets the one that *is* the item
+    for ls in by_item.values():
+        ls.sort(key=lambda l: not l.get("corr"))
+    covered = covered_items(tex_items, by_item)
 
     sources, assets, dropped = ([], [], []) if not with_sources else collect_sources(cfg)
 
@@ -129,6 +134,10 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False,
         "lean_strs": lean_strs,
         "links": links,
         "by_item": by_item,
+        # every item something *corresponds* to, anchors rolled up into their
+        # statements: what "formalized" means, for the check and the overlay
+        # alike, so the two can never drift apart
+        "covered": covered,
         "unresolved": unresolved,
         "sources": sources,
         "assets": assets,
@@ -142,6 +151,7 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False,
             "tex_refs": tex_refs,          # \Cref edges between paper items
             "decl_refs": decl_refs,        # name edges between declarations
             "links": len(links),
+            "corr_links": sum(1 for l in links if l.get("corr")),
             "linked_items": len(by_item),
             "unresolved": len(unresolved),
             "located": located,
@@ -773,3 +783,51 @@ def dangling(manifest: dict) -> dict[str, list[str]]:
         seen.setdefault(u["label"] or u.get("context", "")[:40],
                         []).append(f"{u['file']}:{u['line']}")
     return dict(sorted(seen.items()))
+
+
+def duplicates(manifest: dict) -> dict[str, list[str]]:
+    """Items claimed as a correspondence by more than one declaration.
+
+    A correspondence says *this declaration is that statement*, and two
+    declarations cannot both be it — one of them is talking about it, and the
+    protocol's `cf.` is how a citation says so.  Mentions are unlimited; this
+    reports only the competing claims, each with where it was made.
+
+    A peeled path is a claim on the *part* it named, not on the statement it
+    resolved to: `Proc.params` citing `def:proc:params` does not compete with
+    `Proc` citing `def:proc`, but two declarations both citing
+    `def:proc:params` compete with each other.
+    """
+    out: dict[str, list[str]] = {}
+    claims: dict[str, dict[str, str]] = {}
+    for key, ls in manifest["by_item"].items():
+        for l in ls:
+            if not (l.get("corr") and l.get("decl")):
+                continue
+            target = key + (":" + l["sub"] if l.get("sub") else "")
+            claims.setdefault(target, {}).setdefault(
+                l["decl"], f"{l['decl']} ({l['file']}.lean:{l['line']})")
+    for target, who in claims.items():
+        if len(who) > 1:
+            out[target] = list(who.values())
+    return dict(sorted(out.items()))
+
+
+def covered_items(tex_items, by_item: dict[str, list[dict]]) -> list[str]:
+    """Every key something corresponds to, rolled up through the anchors.
+
+    A correspondence to `def:aeval:arith` is a correspondence to part of
+    `def:aeval`, so the statement is formalized — partly, which the anchor's
+    own band already shows — even when nothing cites the statement whole.
+    Mentions do not count: talking about a statement is not formalizing it.
+    """
+    covered = {k for k, ls in by_item.items()
+               if any(l.get("corr") for l in ls)}
+    parent_of = {k: f"{it.doc}::{it.parent}" for k, it in tex_items.items()
+                 if it.kind == "anchor" and it.parent}
+    for k in list(covered):
+        p = parent_of.get(k)
+        while p and p not in covered:
+            covered.add(p)
+            p = parent_of.get(p)
+    return sorted(covered)

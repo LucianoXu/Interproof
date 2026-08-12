@@ -73,9 +73,12 @@ theorem update_shadow (s : Store) (x : Var) (m n : Nat) :
 theorem update_comm (s : Store) {x y : Var} (h : x ≠ y) (m n : Nat) :
     Store.update (Store.update s x m) y n
       = Store.update (Store.update s y n) x m := by
+  -- Extensionality in `z`: note, lem:update-comm:ext.
   funext z
+  -- The case split on `z = x` and on `z = y`: note, lem:update-comm:split.
   by_cases hzx : z = x
   · subst hzx
+    -- `x ≠ y` rules out the disagreeing branch: note, lem:update-comm:ne.
     simp [Store.update, h]
   · by_cases hzy : z = y
     · subst hzy
