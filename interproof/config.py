@@ -54,9 +54,18 @@ class Grammar:
 
     @property
     def label_re(self) -> re.Pattern[str]:
-        """`thm:foo` and friends, as they occur in a `\\Cref` or a docstring."""
+        """`thm:foo` and friends, as they occur in a `\\Cref` or a docstring.
+
+        A label may carry a **path**: `def:wf:dom` names a part of `def:wf` —
+        one clause of a definition, one production of a grammar.  The tail is
+        read here and settled at resolution, because whether `:dom` is a real
+        sub-anchor or the next word of a sentence is a question only the
+        documents can answer.  A segment must start alphanumeric, so ordinary
+        sentence punctuation — `def:wf: it holds` — never looks like one.
+        """
         alt = "|".join(sorted(map(re.escape, self.label_prefixes), key=len, reverse=True))
-        return re.compile(r"\b(%s):([A-Za-z0-9][A-Za-z0-9\-_.]*)" % alt)
+        seg = r"[A-Za-z0-9][A-Za-z0-9\-_.]*"
+        return re.compile(r"\b(%s):(%s(?::%s)*)" % (alt, seg, seg))
 
     @property
     def env_re(self) -> str:

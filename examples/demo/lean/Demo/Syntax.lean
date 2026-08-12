@@ -47,6 +47,11 @@ inductive Cmd where
   | assign : Var → AExp → Cmd
   | seq : Cmd → Cmd → Cmd
   | ite : BExp → Cmd → Cmd → Cmd
+  /-- The loop, the one production the paper's grammar spends a sentence on:
+  paper:def:cmd:while.  No anchor by that name exists on the paper side yet, so
+  this reads as a citation of the whole definition with `while` recorded —
+  coarser than it was written, never absent.  The band is this constructor,
+  not the datatype: a docstring on a member belongs to the member. -/
   | whileDo : BExp → Cmd → Cmd
   deriving Repr
 

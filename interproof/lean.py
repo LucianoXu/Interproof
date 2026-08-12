@@ -48,6 +48,7 @@ class LeanDecl:
     has_sorry: bool = False
     uses: list[str] = field(default_factory=list)   # "File::name" it names in code
     signature: str = ""      # the declaration as written, body cut off
+    parent: str = ""         # the declaration this is a member of, if any
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,17 @@ def comment_spans(text: str) -> list[tuple[int, int]]:
 
 OPEN, CLOSE = "([{⟨⦃⟮⁅", ")]}⟩⦄⟯⁆"
 BODY_WORD = ("where", "by")
+
+# The members of a declaration that has them: a constructor of an `inductive`,
+# a field of a `structure`.  These are what a paper's *clauses* correspond to —
+# one production of a grammar, one condition of a definition — and Lean has
+# already named every one of them, which is why they can be read rather than
+# annotated.
+HAS_MEMBERS = ("inductive", "structure", "class")
+CTOR_RE = re.compile(r"^\s*\|\s*([A-Za-z_][A-Za-z0-9_'!?]*)")
+FIELD_RE = re.compile(r"^\s+([A-Za-z_][A-Za-z0-9_'!?]*)\s*:(?!=)")
+# `deriving` ends a body; so does a line that has come back out to column zero
+MEMBERS_END_RE = re.compile(r"^\s*deriving\b|^\S")
 
 
 def _idch(c: str) -> bool:
@@ -251,6 +263,27 @@ def parse_file(
                 return first, last
         return line_of(idx), line_of(idx)
 
+    def doc_above(ln_no: int) -> tuple[str, int]:
+        """The `/-- ... -/` docstring introducing the line, if there is one.
+
+        Asked of the comment spans rather than of the line text: a line ending
+        in `-/` says only that *some* comment ends there, and a `/-! ## ... -/`
+        section header ends that way too.  Reading it as a docstring and then
+        searching back for the `/--` that must have opened it walks into the
+        previous declaration's docstring, and the band starts forty lines early
+        with a whole declaration inside it.
+        """
+        j = ln_no - 2
+        while j >= 0 and (lines[j].strip().startswith("@[") or not lines[j].strip()):
+            j -= 1
+        above = block_end.get(j + 1)
+        if not (above and above[1]):
+            return "", 0
+        doc = "\n".join(lines[above[0] - 1:j + 1])
+        doc = re.sub(r"^\s*/--", "", doc).strip()
+        doc = re.sub(r"-/\s*$", "", doc).strip()
+        return doc, above[0]
+
     # module docstring: first /-! ... -/
     module_doc = ""
     md = re.search(r"/-!(.*?)-/", text, re.S)
@@ -280,7 +313,11 @@ def parse_file(
         [s[0] for s in starts] +
         [idx for idx, ln in enumerate(lines, start=1) if BREAK_RE.match(ln)] +
         [ln_no for ln_no, _ in sections] +
-        [line_of(a) for a, _ in spans if text.startswith("/--", a)] +
+        # only a docstring in column zero: an indented `/-- ... -/` introduces a
+        # constructor or a field, and breaking on it would end the `inductive`
+        # in the middle of its own body and lose every member below it
+        [line_of(a) for a, _ in spans
+         if text.startswith("/--", a) and (a == 0 or text[a - 1] == "\n")] +
         [len(lines) + 1]
     )
 
@@ -290,23 +327,7 @@ def parse_file(
         end = nxt - 1
         while end > ln_no and not lines[end - 1].strip():
             end -= 1
-        # The preceding docstring, if the block above the declaration is one.
-        # Asked of the comment spans rather than of the line text: a line
-        # ending in `-/` says only that *some* comment ends there, and a
-        # `/-! ## ... -/` section header ends that way too.  Reading it as a
-        # docstring and then searching back for the `/--` that must have opened
-        # it walks into the previous declaration's docstring, and the band
-        # starts forty lines early with a whole declaration inside it.
-        doc, doc_line = "", 0
-        j = ln_no - 2
-        while j >= 0 and (lines[j].strip().startswith("@[") or not lines[j].strip()):
-            j -= 1
-        above = block_end.get(j + 1)
-        if above and above[1]:
-            doc_line = above[0]
-            doc = "\n".join(lines[doc_line - 1:j + 1])
-            doc = re.sub(r"^\s*/--", "", doc).strip()
-            doc = re.sub(r"-/\s*$", "", doc).strip()
+        doc, doc_line = doc_above(ln_no)
         sec = ""
         for sl, st in sections:
             if sl < ln_no:
@@ -318,6 +339,60 @@ def parse_file(
             has_sorry=bool(re.search(r"\bsorry\b", code)),
             signature=signature_of(code),
         ))
+
+    # The members of the declarations that have them.  A paper's definition has
+    # clauses and its grammar has productions, and the counterpart of one of
+    # those is not a whole `inductive` — it is one constructor of it.  Lean has
+    # already named every one, so this is read off the source rather than
+    # annotated, and a citation in the docstring above a constructor lands on
+    # the constructor: the band covers that line, not the fifteen around it.
+    for d in list(decls):
+        if d.kind not in HAS_MEMBERS:
+            continue
+        hits: list[tuple[int, str]] = []
+        body_end = d.end_line
+        for ln in range(d.line + 1, d.end_line + 1):
+            body = lines[ln - 1]
+            if MEMBERS_END_RE.match(body):
+                # `deriving Repr` closes the body and belongs to none of them;
+                # without this the last member's band runs a line long
+                body_end = ln - 1
+                break
+            if in_comment[min(line_start_off[ln - 1], len(text))]:
+                continue
+            m = CTOR_RE.match(body) or (FIELD_RE.match(body)
+                                        if d.kind != "inductive" else None)
+            if m:
+                hits.append((ln, m.group(1)))
+        # docstrings first, because where one member stops depends on whether
+        # the *next* one has a docstring: the prose introducing a constructor
+        # belongs to it, and left to the member above it lands in the wrong band
+        docs = []
+        for ln, mname in hits:
+            mdoc, mdoc_line = doc_above(ln)
+            # a docstring above the first member could be the parent's own; the
+            # parent already claimed it, and two owners for one comment would
+            # band the same prose twice
+            if mdoc_line and mdoc_line <= d.line:
+                mdoc, mdoc_line = "", 0
+            docs.append((mdoc, mdoc_line))
+
+        for k, (ln, mname) in enumerate(hits):
+            stop = (min(hits[k + 1][0], docs[k + 1][1] or hits[k + 1][0]) - 1
+                    if k + 1 < len(hits) else body_end)
+            mdoc, mdoc_line = docs[k]
+            while stop > ln and not lines[stop - 1].strip():
+                stop -= 1
+            # the leading `|` comes off before the signature is read: it is how
+            # a constructor is written, and `signature_of` stops at a
+            # line-initial `|` because that is where a match arm begins
+            chunk = re.sub(r"^\s*\|\s*", "", "\n".join(lines[ln - 1:stop])).lstrip()
+            decls.append(LeanDecl(
+                name=f"{d.name}.{mname}", kind="constructor" if d.kind == "inductive"
+                else "field", file=name, line=ln, end_line=stop,
+                doc_line=mdoc_line, doc=mdoc, section=d.section, parent=d.name,
+                signature=signature_of(chunk),
+            ))
 
     # harvest references from comment text only
     def mkref(start: int, stop: int, label: str) -> dict:
@@ -331,11 +406,15 @@ def parse_file(
         # declaration it is about, so the docstring counts as part of it.  Only
         # `/-! ... -/` module prose, which no declaration owns, stays at module
         # level.
-        owner = None
+        # Innermost wins.  A constructor's span sits inside its `inductive`'s,
+        # so first-match would hand every citation to the parent and band the
+        # whole datatype for a claim about one production.
+        owner, tightest = None, None
         for d in decls:
-            if (d.doc_line or d.line) <= lno <= d.end_line:
-                owner = d.name
-                break
+            top = d.doc_line or d.line
+            if top <= lno <= d.end_line and (tightest is None
+                                             or d.end_line - top < tightest):
+                owner, tightest = d.name, d.end_line - top
         blk = block_of(start)
         return {"label": label, "line": lno, "doc_hint": doc_hint, "decl": owner,
                 "file": name,
@@ -395,7 +474,10 @@ def declaration_uses(files: list[dict]) -> int:
                 if inside[m.start()]:
                     continue
                 cands = table.get(m.group(0))
-                if not cands or m.group(0) == d["name"]:
+                # a constructor names its own datatype in its type, and a field
+                # its own structure; that is not a dependency, it is what being
+                # a member is
+                if not cands or m.group(0) in (d["name"], d.get("parent")):
                     continue
                 # a name is almost always unique in the corpus; when it is not,
                 # the one in this module wins and a genuine tie is dropped

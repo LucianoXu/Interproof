@@ -113,6 +113,11 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False,
                   "rev": rev_of(d.pdf)}
                  for d in cfg.documents],
         "lean_root": rel_to_root(cfg, cfg.lean_root),
+        # what a citation looks like in this project, so the viewer linkifies
+        # exactly what the build read.  Hard-coding the prefixes in the page
+        # meant a project writing `t:foo` was linked by the build and shown as
+        # plain text by the reader.
+        "grammar": {"label_prefixes": list(cfg.grammar.label_prefixes)},
         "tex": {k: asdict(v) for k, v in tex_items.items()},
         "lean": lean_files,
         # a fully qualified Lean name -> the declaration of this build that
@@ -258,9 +263,23 @@ def _owner(f: dict, full: str, line: int) -> str:
     are tied back by their prefix, so following one lands on the declaration a
     reader was actually looking for rather than nowhere.
     """
+    # A member first, by its dotted name.  Elaboration reports a constructor at
+    # the line of the `inductive` that introduces it, so containment alone
+    # cannot tell `Cmd.whileDo` from `Cmd` — but a member is named for its
+    # parent, and that settles it.  Only members are looked up this way, so
+    # every other resolution keeps the order it had.
     for d in f["decls"]:
-        if (d.get("doc_line") or d["line"]) <= line <= d["end_line"]:
+        if d.get("parent") and (full == d["name"] or full.endswith("." + d["name"])):
             return f["name"] + "::" + d["name"]
+    # innermost wins: a constructor's span sits inside its datatype's, and
+    # following `Cmd.whileDo` should land on the constructor, not on `Cmd`
+    best, span = "", None
+    for d in f["decls"]:
+        top = d.get("doc_line") or d["line"]
+        if top <= line <= d["end_line"] and (span is None or d["end_line"] - top < span):
+            best, span = f["name"] + "::" + d["name"], d["end_line"] - top
+    if best:
+        return best
     short = full.split(".")[-1]
     for d in f["decls"]:
         if d["name"] == short or full.endswith("." + d["name"]):
@@ -441,6 +460,22 @@ def resolve(refs: list[dict], labels: dict[str, set[str]],
             if cm and known(cm.group(1)):
                 clause, base = cm.group(2), cm.group(1)
             r = {**r, "label": base, "clause": clause}
+        # `def:cmd:while` names a part of `def:cmd`.  Until the paper carries
+        # an anchor by that name the citation is still a citation *of the
+        # statement*, so the tail is peeled and kept rather than dangled: the
+        # correspondence is coarser than the author wrote, never absent, and it
+        # sharpens by itself the day the anchor exists.  Peeling from the right
+        # is also what keeps a sentence out of the label — `def:wf:and` reduces
+        # to `def:wf`, which is what was meant.
+        sub = ""
+        if not known(r["label"]):
+            parts = r["label"].split(":")
+            tail: list[str] = []
+            while len(parts) > 2 and not known(":".join(parts)):
+                tail.insert(0, parts.pop())
+            if tail:
+                sub = ":".join(tail)
+                r = {**r, "label": ":".join(parts), "sub": sub}
         holders = [d.id for d in docs if r["label"] in labels[d.id]]
         if not holders:
             unresolved.append(r)

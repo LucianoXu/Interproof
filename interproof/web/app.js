@@ -1400,6 +1400,8 @@ function boot() {
      render an elaborated overlay and a tokenized guess without knowing which
      it was handed. */
   LeanView.init(verso, vscroll, {
+    // asked for, not passed: `init` runs before the manifest has been fetched
+    prefixes: function () { return (M && M.grammar && M.grammar.label_prefixes) || []; },
     label: function (l) { return findLabel(l); },
     decl: function (name, inFile) { return findDecl(name, inFile); },
     full: function (name) { return FULL[name] || null; },

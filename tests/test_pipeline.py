@@ -130,6 +130,60 @@ class ManifestTests(unittest.TestCase):
             _, _, refs = parse_file(p, "M", cites)
         self.assertEqual([r["label"] for r in refs], ["def:frame"])
 
+    def test_members_are_read_and_are_their_own_declarations(self):
+        """A constructor is a declaration, with its own span.
+
+        A paper's grammar has productions and its definitions have clauses, and
+        the counterpart of one of those is one constructor — not the whole
+        `inductive`.  Lean names every one, so they are read rather than
+        annotated.
+        """
+        syn = next(f for f in self.man["lean"] if f["name"] == "Demo/Syntax")
+        by = {d["name"]: d for d in syn["decls"]}
+        self.assertIn("Cmd.whileDo", by, "constructors are not being read")
+        self.assertIn("Proc.params", by, "structure fields are not being read")
+        self.assertEqual(by["Cmd.whileDo"]["parent"], "Cmd")
+        self.assertEqual(by["Cmd.whileDo"]["kind"], "constructor")
+        self.assertEqual(by["Proc.params"]["kind"], "field")
+        # a member's span is its own lines, inside its parent's
+        m, p = by["Cmd.whileDo"], by["Cmd"]
+        self.assertGreaterEqual(m["line"], p["line"])
+        self.assertLessEqual(m["end_line"], p["end_line"])
+        self.assertLess(m["end_line"] - m["line"], p["end_line"] - p["line"])
+        # `deriving Repr` closes the body and belongs to no constructor
+        self.assertNotIn("deriving", "\n".join(
+            syn["text"].split("\n")[m["line"] - 1:m["end_line"]]))
+
+    def test_a_citation_on_a_member_belongs_to_the_member(self):
+        """Innermost wins.
+
+        A constructor sits inside its datatype's span, so first-match would
+        hand the citation to the parent and band the whole datatype for a claim
+        about one production.
+        """
+        on_member = [l for l in self.man["links"] if l["decl"] == "Cmd.whileDo"]
+        self.assertTrue(on_member, "the example must cite a constructor")
+
+    def test_a_label_path_peels_to_the_statement_it_names(self):
+        """`def:cmd:while` is a part of `def:cmd`.
+
+        Until the paper carries an anchor by that name the citation still names
+        the statement, so the tail is peeled and recorded rather than dangled —
+        coarser than it was written, never absent.
+        """
+        path = [l for l in self.man["links"] if l.get("sub")]
+        self.assertTrue(path, "the example must cite a sub-anchor")
+        l = path[0]
+        self.assertEqual(l["label"], "def:cmd")
+        self.assertEqual(l["sub"], "while")
+        self.assertEqual(l["key"], "paper::def:cmd")
+        self.assertEqual(self.man["unresolved"], [], "a path must not dangle")
+
+    def test_the_viewer_is_told_what_a_label_looks_like(self):
+        """The page linkifies what the build read, not a list of its own."""
+        self.assertEqual(self.man["grammar"]["label_prefixes"],
+                         list(self.cfg.grammar.label_prefixes))
+
     def test_module_and_declaration_citations_both_occur(self):
         owners = {l["decl"] is None for l in self.man["links"]}
         self.assertEqual(owners, {True, False},
