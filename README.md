@@ -1,3 +1,41 @@
+> **Have an agent set this up for you.** In a project that holds a paper's
+> LaTeX and its Lean formalization, paste this to a coding agent (Claude Code,
+> Cursor, Codex, …) run at the project root — it installs the tool, writes the
+> correspondence, and leaves you a site:
+>
+> ```text
+> Set up Interproof (https://github.com/LucianoXu/Interproof) on this project,
+> which holds LaTeX papers and a Lean 4 formalization, so the two can be read
+> side by side.
+>
+> 1. Install it: `pipx install interproof` (or pip). Confirm `latexmk
+>    --version` runs; every document must compile, with SyncTeX.
+> 2. Run `interproof init` at the project root, then read the generated
+>    interproof.toml and correct its guesses: one [[document]] per real
+>    document, never per included fragment; `[formal] root` at the directory
+>    whose layout should appear in the index; `[grammar]` matching the
+>    \newtheorem names and \label prefixes this project actually uses.
+> 3. Read the citation protocol before writing any citation:
+>    https://github.com/LucianoXu/Interproof/blob/main/docs/CITING.md and
+>    ANCHORS.md beside it. The one rule: a Lean comment names a paper
+>    statement by its \label, in the docstring above the declaration that
+>    formalizes it.
+> 4. Scan both sides and write the correspondence where it truly holds: every
+>    declaration that states or proves a labelled statement gets that label in
+>    its docstring, with the document named alongside when two documents share
+>    the label. Go below the statement where the structure is real: a
+>    constructor or field cites the clause or production it is, by label path
+>    (paper:def:cmd:while); a part of the paper worth naming exactly gets a
+>    `% @interproof anchor` comment in the LaTeX — a comment, never a macro.
+>    Do not invent correspondence: cite only what a declaration really
+>    formalizes, and leave genuine gaps uncovered — showing them is the point.
+> 5. Run `interproof check` after each pass and finish at zero dangling
+>    citations.
+> 6. Run `interproof build -o site`. Hand back site/index.html — the folder is
+>    self-contained, opens with no server, and publishes anywhere a static
+>    site does.
+> ```
+
 # Interproof
 
 A paper and its formalization, read side by side: **the compiled PDF on the
@@ -6,9 +44,9 @@ citations that are already in them.
 
 Pick a lemma in the paper and the right pane opens the module that formalizes
 it, scrolled to the declaration and banded. Pick a declaration and the paper
-marks every statement it claims to be. Press `a` and every mechanized statement
-in the paper lights up at once — coverage as a property of the page rather than
-as a table somewhere else.
+marks every statement it claims to be. Every mechanized statement arrives
+already lit — coverage as a property of the page rather than as a table
+somewhere else — and `a` puts the marks away.
 
 The paper side is the **compiled PDF**, not a re-render of the LaTeX. A
 113-macro preamble, `mathpartir` rule displays and `\inferrule` do not survive
@@ -92,6 +130,46 @@ it to be:
 Both directions of both reference structures come out of this: what a statement
 cites and what cites it, what a declaration uses and what uses it. A proof can
 be walked backwards to its hypotheses on either side.
+
+## Writing the correspondence
+
+A citation is a `\label` written in a Lean comment. That is the whole form,
+and it is the only one:
+
+```lean
+/-- The one-sided step lemma.  See P3:lem:one-sided. -/
+theorem step_one_sided : … := …
+```
+
+- **Where it sits is what it claims.** In the docstring above a declaration,
+  the citation belongs to that declaration and the band covers prose and code
+  together; in `/-! … -/` module prose it belongs to the comment block that
+  cites, never to a region spanning two distant mentions.
+- **Two documents holding the same label** — a paper and a note both with
+  `def:state` — are told apart by naming the document in the same clause:
+  `note, def:state`. A label only one document holds needs no ceremony.
+- **Below the statement, a path names a part.** A constructor's docstring
+  cites the production it is (`paper:def:cmd:while`), a field the clause it
+  is (`note, def:proc:params`). If the paper carries an anchor by that name,
+  the reader bands that part alone; if not, the path peels to the statement —
+  always safe to write, and it sharpens by itself the day the paper is
+  annotated.
+- **An anchor is a LaTeX comment**, so the paper still compiles on arXiv, in
+  Overleaf, for a co-author who has never heard of this tool:
+
+  ```latex
+  % @interproof anchor def:aeval:arith                        claims the next line
+  % @interproof anchor def:aeval:arith:lit = "\sem{n}\sigma = n"    measured to the point
+  ```
+
+  Bare, it claims the following source line, located by SyncTeX. Quoted, the
+  exact span is measured by a marked private build of the paper — one clause
+  of a definition, one premise of an `\inferrule`, one of three equations
+  sharing a printed line — and the PDF the reader sees is still the clean one.
+
+The full protocol, including what `interproof check` holds it to, is
+**[docs/CITING.md](docs/CITING.md)**; the layer below the statement is
+**[docs/ANCHORS.md](docs/ANCHORS.md)**.
 
 ## Two modes
 
@@ -196,8 +274,26 @@ root it belongs to is marked.
 - **References**, above both pages: `cites` / `cited by` for a statement,
   `uses` / `used by` for a declaration — each direction on its own row, because
   they answer different questions.
-- **Formalized** (`a`): every mechanized statement marked in the paper at once.
-  A gap reads as a gap.
+- **Formalized** (`a`): every mechanized statement marked in the paper at
+  once, and it is on when the page opens — how much of this paper is machine-
+  checked is the question a reader arrives with, so the page starts with the
+  answer. A gap reads as a gap; `a` puts the marks away.
+- **Clean** (`c`): the apparatus put away, leaving the two documents.
+- **The lamp**, top left of the controls, answers two questions at once and
+  keeps them apart. Its **colour is the project**: green when every citation
+  resolves, amber when the correspondence has a hole it can name — dangling
+  citations, nothing placed on a page, elaboration asked for and not run — and
+  rust when the build failed outright. Its **text is the session**: `live`,
+  `rebuilding`, `elaborating`, `offline`. Hover it for the reason. A published
+  folder has no session to report, so its word is the verdict itself — `ok`,
+  `warning`, `failed` — and it is there in every build, including a clean one:
+  a lamp that appears only on bad news is a lamp whose absence says nothing,
+  and that nobody has learnt to read by the day it matters.
+- `/` filter — it searches both indexes at once, by statement, by declaration
+  and by file name, and shows what it found in each · `j`/`k` move · `h`/`l`
+  fold and unfold the branch you are in · `a` formalized · `c` clean · the URL
+  hash deep-links an item, unfolding the tree to it · `\Cref` links inside the
+  PDF are followable.
 
 ## Reading the code
 
@@ -252,27 +348,11 @@ The example is where to see the difference: it is a `lake` package requiring
 SubVerso, it depends on nothing but Lean core, and `--elaborate` on it costs
 about twenty seconds the first time and two after that.
 
-What it costs the artifact is reported, not estimated — on that example, 1 845
-tokens and 74 proof states over five modules add 125 KB to a manifest, of
+What it costs the artifact is reported, not estimated — on that example, 1 871
+tokens and 74 proof states over five modules add 127 KB to a manifest, of
 which the states are 9 KB: they go by tactic, and tactics are an order of
 magnitude rarer than tokens. Setup, caching and the size
 argument: **[docs/config.md](docs/config.md#elaborate--what-the-machine-page-can-say-about-itself)**.
-- **Clean** (`c`): the apparatus put away, leaving the two documents.
-- **The lamp**, top left of the controls, answers two questions at once and
-  keeps them apart. Its **colour is the project**: green when every citation
-  resolves, amber when the correspondence has a hole it can name — dangling
-  citations, nothing placed on a page, elaboration asked for and not run — and
-  rust when the build failed outright. Its **text is the session**: `live`,
-  `rebuilding`, `elaborating`, `offline`. Hover it for the reason. A published
-  folder has no session to report, so its word is the verdict itself — `ok`,
-  `warning`, `failed` — and it is there in every build, including a clean one:
-  a lamp that appears only on bad news is a lamp whose absence says nothing,
-  and that nobody has learnt to read by the day it matters.
-- `/` filter — it searches both indexes at once, by statement, by declaration
-  and by file name, and shows what it found in each · `j`/`k` move · `h`/`l`
-  fold and unfold the branch you are in · `a` formalized · `c` clean · the URL
-  hash deep-links an item, unfolding the tree to it · `\Cref` links inside the
-  PDF are followable.
 
 ## Publishing
 
