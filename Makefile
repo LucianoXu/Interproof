@@ -54,6 +54,13 @@ sync:
 	   sandbox/tex/note/main.tex
 	cp "$(PQCPLUS)/notes/RHL-with-Arbitrary-Quantum-Adversary/appendix.tex" sandbox/tex/note/
 	cp $(PQCPLUS)/auto-research/Lean*Spec.md              sandbox/
+## The configuration is the one part of the case study that nothing else can
+## regenerate: `sandbox/` comes from the live project and the PDFs come from
+## latexmk, but this file exists only here.  It is copied rather than tracked
+## in place, so that a fresh clone does not carry an `interproof.toml` at its
+## root pointing at material that has not been fetched yet.
+	@test -f interproof.toml || cp tools/case-study.toml interproof.toml
+	@echo "sandbox/ populated, interproof.toml in place.  Now: make"
 
 clean:
 	rm -rf site

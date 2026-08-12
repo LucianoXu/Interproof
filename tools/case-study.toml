@@ -1,0 +1,38 @@
+# The PQCPlus case study.
+#
+# `make sync` copies this to `interproof.toml` at the repository root, where
+# the material it describes is put — `sandbox/`, which the same target fills
+# from the live PQCPlus project.  Both are untracked; this file is the one
+# piece that has to survive, because nothing else can regenerate it.
+#
+# It is not an example to copy: a real project keeps its `interproof.toml`
+# beside its own papers and Lean sources.  For a configuration written to be
+# read, see `examples/demo/interproof.toml`.
+
+[project]
+title = "PQCPlus"
+out = "site"
+build_dir = "stignore-build"
+
+[[document]]
+id      = "P3"
+title   = "EasyPQC on a Concrete Semantics"
+short   = "easypqc"
+root    = "sandbox/tex/P3-easypqc"
+main    = "main.tex"
+files   = ["sections/*.tex"]
+markers = ['\bP3\b', 'EasyPQC']
+env     = { BIBINPUTS = "../common:" }
+
+[[document]]
+id      = "note"
+title   = "Quantum Procedure Call Semantics"
+short   = "semantics"
+root    = "sandbox/tex/note"
+main    = "main.tex"
+files   = ["main.tex", "appendix.tex"]
+markers = ['\bnotes?\b']
+
+[formal]
+kind = "lean"
+root = "sandbox/lean"
