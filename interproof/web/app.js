@@ -630,8 +630,12 @@ function located(doc) {
    once, and a mark is clickable — so the paper itself becomes the index into
    the machine side, and the gaps are visible as gaps rather than as absences
    from a list.  The item being read is left to its own band. */
+/* The marks are laid whether the overlay is showing or not: put away, they
+   keep no colour at rest but still answer the pointer — the reader who wants
+   a quiet page keeps it, and the page still tells them what is under their
+   hand the moment they ask.  `a` decides the resting paint (a class on the
+   frame, see `toggleAll`), never the marks' existence. */
 function allMarks(doc) {
-  if (!state.all) return [];
   return located(doc).filter(function (e) {
     return COVERED[e.key] && state.marked.indexOf(e.key) < 0;
   }).map(function (e) {
@@ -647,6 +651,8 @@ function allMarks(doc) {
 function toggleAll(on) {
   state.all = on === undefined ? !state.all : on;
   $("#allbtn").classList.toggle("on", state.all);
+  // the marks stay; only their resting paint goes.  Hover still answers.
+  $("#app").classList.toggle("alloff", !state.all);
   PDFView.repaintMarks();
 }
 
@@ -1501,7 +1507,7 @@ function helpHTML() {
        "</ul>" + helpCode();
 
   h += "<h3>keys</h3><table class='hkeys'>" +
-       row("a", "<b>Formalized</b>: every statement with a counterpart, marked at once — on by default; <code>a</code> puts the marks away") +
+       row("a", "<b>Formalized</b>: every statement with a counterpart, marked at once — on by default. <code>a</code> puts the marks away; a put-away mark still lights under the pointer") +
        row("c", "<b>Clean</b>: put the apparatus away, leaving the two documents") +
        row("?", "this page") +
        row("esc", "close this, or leave Clean") +

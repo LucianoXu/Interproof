@@ -284,7 +284,9 @@ root it belongs to is marked.
 - **Formalized** (`a`): every mechanized statement marked in the paper at
   once, and it is on when the page opens — how much of this paper is machine-
   checked is the question a reader arrives with, so the page starts with the
-  answer. A gap reads as a gap; `a` puts the marks away.
+  answer. A gap reads as a gap; `a` puts the marks away. Put away, they keep
+  answering the pointer: hover where one lies and it lights, with its name —
+  a quiet page that still says what is under your hand.
 - **Clean** (`c`): the apparatus put away, leaving the two documents.
 - **The lamp**, top left of the controls, answers two questions at once and
   keeps them apart. Its **colour is the project**: green when every citation

@@ -483,6 +483,15 @@ a.hbtn { text-decoration: none; }
   background: rgba(38,66,26,.38);
   box-shadow: inset 2px 0 0 #26421a, 0 0 0 1px rgba(38,66,26,.55);
 }
+/* Formalized put away (`a`): the marks lose their resting paint and keep
+   their ground — hovering where one lies still lights it and says what it
+   is.  The id outranks the plain :hover rule, so the answer under the
+   pointer is restated rather than lost. */
+#app.alloff .covmark { background: transparent; box-shadow: none; animation: none; }
+#app.alloff .covmark:hover {
+  background: rgba(38,66,26,.38);
+  box-shadow: inset 2px 0 0 #26421a, 0 0 0 1px rgba(38,66,26,.55);
+}
 /* the label that says what the pointer is on, the moment it is on it —
    named after the deepest mark, because that is the only one the pointer
    reaches.  Above every mark and every \Cref link, and transparent to the
