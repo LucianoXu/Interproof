@@ -143,7 +143,12 @@ What it costs:
   require subverso from git "https://github.com/leanprover/subverso"
   ```
 
-  then `lake update subverso` once.
+  then `lake update subverso` once.  The build itself is not your job:
+  `interproof` runs `lake build` before it reads anything, because
+  `subverso-extract-mod` *imports* the module it elaborates and a module whose
+  neighbours have no `.olean` fails with `unknown module prefix` — quietly, and
+  only for the modules that import something, so an unbuilt checkout yields a
+  fraction of an overlay and a build that reports success.
 
 - **time.** Every module is elaborated separately, so each one pays for
   importing its whole dependency closure. The result is cached under the build

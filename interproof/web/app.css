@@ -173,11 +173,31 @@ header {
    still following is worth a lamp and four characters — but not a place in
    the reading order, so it sits with the counters and takes the same weight
    they do.  Shown only when there is a server to be connected to. */
-.live { display: none; align-items: center; gap: 7px; color: var(--machine-dim); }
+/* Two axes, two channels.  The dot is the *project* — green when every
+   citation resolves, amber when the correspondence has a hole it can name,
+   rust when the build failed outright — and it means the same thing in a
+   published folder as in a live session.  The word beside it is what *this
+   session* is doing, which only a served page has, and the only thing the
+   activity touches is whether the dot pulses. */
+.live {
+  position: relative;                /* the tooltip hangs off it */
+  display: none; align-items: center; gap: 7px; color: var(--machine-dim);
+  cursor: help;
+}
 .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--machine-rule); }
-.live.on i { background: var(--verd-dim); }
-.live.wait i { background: var(--amber); animation: blink 1.1s steps(2) infinite; }
-.live.off i, .live.bad i { background: var(--rust); }
+.live i.idle { background: var(--machine-rule); }
+.live i.ok   { background: var(--verd-dim); }
+.live i.warn { background: var(--amber); }
+.live i.bad  { background: var(--rust); }
+/* working: the dot pulses, whatever colour the project has made it */
+.live.wait i { animation: blink 1.1s steps(2) infinite; }
+/* not following any more — the colour is the last thing known to be true, and
+   the word is what says so */
+.live.off, .live.bad { color: var(--rust-soft); }
+/* in a published folder the word *is* the verdict, so it carries the colour
+   too; in a served one the word is the activity and stays neutral */
+.live.warn { color: var(--amber); }
+.live.ok { color: var(--verd-dim); }
 @keyframes blink { 50% { opacity: .25; } }
 
 /* --- what the viewer is doing ------------------------------------------- */

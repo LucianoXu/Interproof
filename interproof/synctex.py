@@ -156,10 +156,31 @@ class SyncTeX:
         floor = (max(floors, key=lambda b: (b.page, b.top)) if floors
                  else Box(top.page, top.x, top.bottom, top.w, 0.0))
 
+        # `floor` settles the bottom edge and nothing else.  It is a box from
+        # *outside* the environment — the first thing typeset after it — so its
+        # horizontal extent describes a different block, and folding it in put
+        # that block's indentation into this one's band.
+        #
+        # The visible symptom was a band that looked type-dependent.  What
+        # follows a `theorem`/`lemma`/`proposition`/`corollary` is a `proof`,
+        # and amsthm sets that as a trivlist whose `\item[… Proof.]` hangs into
+        # the left margin (h:73.75 against the text block's 79.20).  A
+        # `definition` is followed by an ordinary paragraph and kept 79.20.  So
+        # statements banded 5.45pt further left according to whether they had a
+        # proof under them, which reads as a design decision and is not one.
+        #
+        # The two were also taken independently, `min` of the lefts against
+        # `max` of the widths, which is not a union of anything: a block whose
+        # floor was further left *and* narrower came out short on the right, so
+        # one band in the tracked example missed the right edge every other
+        # band lined up on.
+        #
+        # A band belongs to the statement, so it takes the statement's own
+        # measure.
         return self.tighten({
             "page": top.page, "top": round(top.top, 2),
-            "x": round(min(top.x, floor.x), 2),
-            "w": round(max(top.w, floor.w), 2),
+            "x": round(top.x, 2),
+            "w": round(top.w, 2),
             "end_page": floor.page, "bottom": round(floor.top, 2),
         })
 

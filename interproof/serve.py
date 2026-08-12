@@ -254,6 +254,12 @@ class _Live:
             cfg, errors = want
             with self._lock:
                 started = self._gen
+            # Say that Lean has started, because the page cannot tell.  Without
+            # this the two-phase publish looks from the browser like two
+            # ordinary rebuilds a few seconds apart — the lamp blinks twice and
+            # the types appear after the second blink with nothing to say why.
+            # The generation does not move: this announces work, not a result.
+            self._publish({**self.status(), "busy": "elaborate"})
             t0 = time.monotonic()
             try:
                 manifest = _build_manifest(cfg, True)
