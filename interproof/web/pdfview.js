@@ -251,13 +251,21 @@ function band(rect, cls) {
 function paintOverlay() {
   host.querySelectorAll(".covmark").forEach(function (el) { el.remove(); });
   if (!cur || !marksOf) return;
-  marksOf(cur).forEach(function (e) {
-    if (!e.rect) return;
-    band(e.rect, "covmark").forEach(function (el) {
-      el.title = e.title || "";
-      el.onclick = function () { if (onPick) onPick(e.key); };
+  /* Marks nest: an anchor's rectangle sits inside its statement's.  Painted
+     in arbitrary order, whichever came last would take the pointer for both.
+     Large first, so the innermost is always on top — hover lights the deepest
+     mark alone, and a click on a clause opens the clause. */
+  var area = function (r) {
+    return ((r.end_page || r.page) - r.page) * 1e6 + (r.bottom - r.top) * r.w;
+  };
+  marksOf(cur).filter(function (e) { return e.rect; })
+    .sort(function (a, b) { return area(b.rect) - area(a.rect); })
+    .forEach(function (e) {
+      band(e.rect, "covmark").forEach(function (el) {
+        el.title = e.title || "";
+        el.onclick = function () { if (onPick) onPick(e.key); };
+      });
     });
-  });
 }
 
 function show(rects, focus) {

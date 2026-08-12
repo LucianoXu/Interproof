@@ -133,6 +133,8 @@ header {
   transition: background .15s, color .15s, border-color .15s;
 }
 .hbtn .lbl { display: inline; }
+/* the one control that is a link rather than a button: same coat, no underline */
+a.hbtn { text-decoration: none; }
 .hbtn svg {
   width: 16px; height: 16px; flex: none;
   fill: none; stroke: currentColor; stroke-width: 1.4;
@@ -472,7 +474,15 @@ header {
   transition: background .15s;
   animation: markin .5s ease both;
 }
-.covmark:hover { background: rgba(77,107,58,.3); box-shadow: inset 2px 0 0 var(--verd); }
+/* Under the pointer a mark answers in dark green — the hint that this one is
+   the clickable, and *which* one: marks nest (an anchor inside its statement),
+   they are painted large-first so the pointer always lands on the innermost,
+   and only that one lights.  The statement around a hovered clause stays at
+   rest, which is what tells the reader the click is the clause. */
+.covmark:hover {
+  background: rgba(38,66,26,.38);
+  box-shadow: inset 2px 0 0 #26421a, 0 0 0 1px rgba(38,66,26,.55);
+}
 
 /* \Cref links the document itself carries (hyperref documents only).  Faint
    at rest rather than invisible: a link nobody knows is there is not a link. */
@@ -757,6 +767,11 @@ header {
 }
 .vhead .srrtag {
   color: #e06c6c; border: 1px solid #7a3030; padding: 1px 5px; font-size: 9.5px;
+}
+/* a citation that talks about the statement rather than being it */
+.vhead .mentag {
+  color: var(--machine-dim); border: 1px solid var(--machine-rule);
+  padding: 1px 5px; font-size: 9.5px;
 }
 /* the reference rows take the full width of the bar: there are up to three of
    them, and right-aligning each against the id line reads as one long spill */
