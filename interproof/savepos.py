@@ -181,7 +181,10 @@ def _patch(root: Path, doc_root: Path, main: Path,
             unbalanced.extend(bad)
 
     head = main.read_text(encoding="utf-8", errors="replace")
-    if r"\ipmark" not in head:
+    # The sentinel is the *definition*, not any use of it: a single-file
+    # document carries its freshly wrapped spans in this very file, and asking
+    # for `\ipmark` would find them and skip the injection they need.
+    if r"\providecommand\ipposition" not in head:
         patched, n = DOCCLASS_RE.subn(lambda m: m.group(1) + MACROS, head, count=1)
         if not n:
             raise SaveposError(f"no \\documentclass in {main.name}")
