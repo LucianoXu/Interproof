@@ -21,15 +21,20 @@ The same five rules as the previous module, read as introduction rules of an
 inductive family rather than as theorems.  Nothing here mentions `BigStep`;
 that is what makes soundness a statement worth proving. -/
 inductive Derivable : Assn → Cmd → Assn → Prop where
+  /-- paper:def:derivable:skip -/
   | skip (P : Assn) : Derivable P Cmd.skip P
+  /-- paper:def:derivable:assign -/
   | assign (P : Assn) (x : Var) (a : AExp) :
       Derivable (Assn.subst P x a) (Cmd.assign x a) P
+  /-- paper:def:derivable:seq -/
   | seq {P Q R : Assn} {c₁ c₂ : Cmd} :
       Derivable P c₁ Q → Derivable Q c₂ R → Derivable P (Cmd.seq c₁ c₂) R
+  /-- paper:def:derivable:ite -/
   | ite {P Q : Assn} {b : BExp} {c₁ c₂ : Cmd} :
       Derivable (fun s => P s ∧ b.eval s = true) c₁ Q →
       Derivable (fun s => P s ∧ b.eval s = false) c₂ Q →
       Derivable P (Cmd.ite b c₁ c₂) Q
+  /-- paper:def:derivable:whileDo -/
   | whileDo {P : Assn} {b : BExp} {c : Cmd} :
       Derivable (fun s => P s ∧ b.eval s = true) c P →
       Derivable P (Cmd.whileDo b c) (fun s => P s ∧ b.eval s = false)

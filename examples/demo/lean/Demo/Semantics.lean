@@ -55,17 +55,24 @@ theorem AExp.eval_congr {s t : Store} :
 `⟨c, σ⟩ ⇓ τ`.  Non-termination is the absence of a derivation, which is all
 partial correctness needs. -/
 inductive BigStep : Cmd → Store → Store → Prop where
+  /-- paper:def:bigstep:skip -/
   | skip (s : Store) : BigStep Cmd.skip s s
+  /-- paper:def:bigstep:assign -/
   | assign (s : Store) (x : Var) (a : AExp) :
       BigStep (Cmd.assign x a) s (Store.update s x (a.eval s))
+  /-- paper:def:bigstep:seq -/
   | seq {c₁ c₂ : Cmd} {s t u : Store} :
       BigStep c₁ s t → BigStep c₂ t u → BigStep (Cmd.seq c₁ c₂) s u
+  /-- paper:def:bigstep:iteTrue -/
   | iteTrue {b : BExp} {c₁ c₂ : Cmd} {s t : Store} :
       b.eval s = true → BigStep c₁ s t → BigStep (Cmd.ite b c₁ c₂) s t
+  /-- paper:def:bigstep:iteFalse -/
   | iteFalse {b : BExp} {c₁ c₂ : Cmd} {s t : Store} :
       b.eval s = false → BigStep c₂ s t → BigStep (Cmd.ite b c₁ c₂) s t
+  /-- paper:def:bigstep:whileFalse -/
   | whileFalse {b : BExp} {c : Cmd} {s : Store} :
       b.eval s = false → BigStep (Cmd.whileDo b c) s s
+  /-- paper:def:bigstep:whileTrue -/
   | whileTrue {b : BExp} {c : Cmd} {s t u : Store} :
       b.eval s = true → BigStep c s t → BigStep (Cmd.whileDo b c) t u →
       BigStep (Cmd.whileDo b c) s u

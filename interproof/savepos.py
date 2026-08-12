@@ -59,6 +59,29 @@ DOCCLASS_RE = re.compile(r"(\\documentclass\s*(?:\[[^\]]*\])?\s*\{[^}]*\})")
 SP = 65536.0                      # scaled points in a point
 
 
+def balanced(s: str) -> bool:
+    """Whether a quoted span opens exactly the groups it closes.
+
+    A span is wrapped in `\\ipmark{…}` on both sides, so it has to be a thing
+    TeX can see as one: `\\frac{a}{b}` can be marked, and the `\\frac{a}` half
+    of it cannot.  An unescaped brace is what counts; `\\{` is a character.
+    """
+    depth, i = 0, 0
+    while i < len(s):
+        c = s[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth < 0:
+                return False
+        i += 1
+    return depth == 0
+
+
 class SaveposError(Exception):
     """The marked build could not be made or read.  Never fatal."""
 
@@ -114,6 +137,7 @@ def _patch(root: Path, doc_root: Path, main: Path,
     together later.
     """
     done = 0
+    unbalanced: list[str] = []
     by_file: dict[Path, list[tuple[int, str, str]]] = {}
     for f, at, path, want in marks:
         by_file.setdefault(f, []).append((at, path, want))
@@ -129,6 +153,7 @@ def _patch(root: Path, doc_root: Path, main: Path,
         # and a production quoted as `x` would be found there instead of in the
         # grammar.
         by_line: dict[int, list[tuple[int, int, str]]] = {}
+        bad: list[str] = []
         for at, path, want in items:
             if not 1 <= at <= len(lines):
                 continue
@@ -136,6 +161,14 @@ def _patch(root: Path, doc_root: Path, main: Path,
             hits = [i for i in range(len(body)) if body.startswith(want, i)]
             if len(hits) != 1:
                 # ambiguous or absent: say so rather than mark the wrong one
+                continue
+            if not balanced(want):
+                # A quote that opens a group it does not close cannot be
+                # wrapped: the marker lands between `\frac{…}` and its second
+                # argument and TeX stops on an extra `}`.  One unbalanced
+                # quote fails the whole run, taking every other span with it,
+                # so this is refused here rather than discovered in a log.
+                bad.append(path)
                 continue
             by_line.setdefault(at, []).append((hits[0], len(want), path))
 
@@ -148,6 +181,8 @@ def _patch(root: Path, doc_root: Path, main: Path,
                 done += 1
             lines[at - 1] = body
         target.write_text("\n".join(lines), encoding="utf-8")
+        if bad:
+            unbalanced.extend(bad)
 
     head = main.read_text(encoding="utf-8", errors="replace")
     if r"\ipmark" not in head:
@@ -155,6 +190,10 @@ def _patch(root: Path, doc_root: Path, main: Path,
         if not n:
             raise SaveposError(f"no \\documentclass in {main.name}")
         main.write_text(patched, encoding="utf-8")
+    if unbalanced:
+        raise SaveposError(
+            "unbalanced quoted span(s): " + ", ".join(unbalanced)
+            + " — a span must open exactly the braces it closes")
     return done
 
 
