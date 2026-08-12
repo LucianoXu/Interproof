@@ -710,6 +710,9 @@ def extract(cfg: Config, files: list[dict], *,
     if todo:
         say(f"elaborating      {len(todo)} of {len(files)} modules "
             f"({len(files) - len(todo)} cached) — `{EXE}` in {root}")
+        for line in _build_package(lake, root):
+            say("!! " + line)
+            notes.append(line)
     for i, (f, want) in enumerate(todo, start=1):
         mod = names[f["name"]]
         say(f"   {i:>4}/{len(todo)}  {mod}")
@@ -729,6 +732,34 @@ def extract(cfg: Config, files: list[dict], *,
         out[f["name"]] = ov
 
     return out, notes
+
+
+def _build_package(lake: str, root: Path) -> list[str]:
+    """Compile the formalization before asking Lean to read it.
+
+    `subverso-extract-mod` *imports* the module it elaborates, so every module
+    that imports another needs its neighbours' `.olean` files to exist.  Nobody
+    builds those as a side effect: `lake exe` builds the executable, not the
+    library it is going to be pointed at.
+
+    Skipping this does not fail — it produces something worse.  On a fresh
+    checkout only the modules that import nothing elaborate, and the build
+    reports success with an overlay a fifth the size it should be.  That is
+    exactly what happened to this repository's own published example: 1 module
+    of 5, `unknown module prefix`, and a green tick.
+
+    Incremental, so it costs nothing once the project is built, and a failure
+    is a note rather than an exception — a formalization that does not compile
+    should still produce a reader, and the per-module errors will say so in
+    more detail than this can.
+    """
+    proc = subprocess.run([lake, "build"], cwd=root,
+                          capture_output=True, text=True)
+    if proc.returncode == 0:
+        return []
+    return ["`lake build` failed in " + str(root) + ", so modules that import "
+            "others will not elaborate: " +
+            _clip((proc.stderr or "") + (proc.stdout or ""))]
 
 
 def _cachefile(cache: Path, name: str) -> Path:

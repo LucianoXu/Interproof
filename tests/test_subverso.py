@@ -332,6 +332,95 @@ class DependencyCheckoutTests(unittest.TestCase):
             self.assertNotIn(".lake", p.parts, f"{p} is a dependency, not this development")
 
 
+class InvocationTests(unittest.TestCase):
+    """What `extract` runs, and in what order.
+
+    Driven with a `lake` that is a shell script recording its arguments, so
+    the ordering is pinned without a toolchain.  It is pinned because getting
+    it wrong is silent: `subverso-extract-mod` *imports* the module it
+    elaborates, so on an unbuilt checkout every module that imports another
+    fails with `unknown module prefix` while the modules importing nothing
+    succeed — and the build reports success with a fraction of an overlay.
+    This repository published exactly that: 1 module of 5, and a green tick.
+    """
+
+    def _project(self, tmp: Path):
+        (tmp / "lean" / "Demo").mkdir(parents=True)
+        (tmp / "lean" / "lakefile.toml").write_text('name = "demo"\n')
+        (tmp / "lean" / "Demo" / "A.lean").write_text("def a := 1\n")
+        (tmp / "lean" / "Demo" / "B.lean").write_text("import Demo.A\ndef b := a\n")
+        (tmp / "interproof.toml").write_text(
+            '[[document]]\nid = "D"\nroot = "tex"\n[formal]\nroot = "lean"\n')
+        (tmp / "tex").mkdir()
+        (tmp / "tex" / "main.tex").write_text("\\documentclass{article}\n"
+                                              "\\begin{document}\\end{document}\n")
+
+        log = tmp / "calls.log"
+        fake = tmp / "lake"
+        fake.write_text(
+            "#!/bin/sh\n"
+            f'echo "$@" >> {log}\n'
+            'if [ "$1" = "exe" ]; then\n'
+            '  printf \'{"data":{"code":{},"tokens":{},"goals":{},'
+            '"messageContents":{},"nextKey":0},"items":[]}\' > "$4"\n'
+            "fi\n"
+            "exit 0\n")
+        fake.chmod(0o755)
+        return C.load(tmp / "interproof.toml"), fake, log
+
+    def test_the_project_is_built_before_a_module_is_read(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            cfg, fake, log = self._project(tmp)
+            cfg = type(cfg)(**{**cfg.__dict__, "lake": str(fake)})
+            files = [{"name": "Demo/A", "text": "def a := 1\n", "imports": []},
+                     {"name": "Demo/B", "text": "import Demo.A\n",
+                      "imports": ["Demo/A"]}]
+            S.extract(cfg, files, say=lambda *a: None)
+
+            calls = [l.strip() for l in log.read_text().splitlines() if l.strip()]
+            self.assertTrue(calls, "`lake` was never invoked")
+            self.assertEqual(calls[0], "build",
+                             "the library must be compiled before any module "
+                             "is imported for elaboration")
+            self.assertTrue(any(c.startswith("exe ") for c in calls[1:]),
+                            "no module was extracted after the build")
+
+    def test_it_is_built_once_however_many_modules(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            cfg, fake, log = self._project(tmp)
+            cfg = type(cfg)(**{**cfg.__dict__, "lake": str(fake)})
+            files = [{"name": "Demo/%d" % i, "text": "def x%d := 1\n" % i,
+                      "imports": []} for i in range(6)]
+            S.extract(cfg, files, say=lambda *a: None)
+            calls = [l.strip() for l in log.read_text().splitlines() if l.strip()]
+            self.assertEqual(calls.count("build"), 1,
+                             "one build for the package, not one per module")
+
+    def test_a_package_that_will_not_build_is_a_note_not_a_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            cfg, fake, log = self._project(tmp)
+            fake.write_text("#!/bin/sh\n"
+                            'if [ "$1" = "build" ]; then\n'
+                            '  echo "error: it does not compile" >&2\n'
+                            "  exit 1\n"
+                            "fi\n"
+                            'if [ "$1" = "exe" ]; then\n'
+                            '  printf \'{"data":{"code":{},"tokens":{},"goals":{},'
+                            '"messageContents":{},"nextKey":0},"items":[]}\' > "$4"\n'
+                            "fi\n"
+                            "exit 0\n")
+            fake.chmod(0o755)
+            cfg = type(cfg)(**{**cfg.__dict__, "lake": str(fake)})
+            files = [{"name": "Demo/A", "text": "def a := 1\n", "imports": []}]
+            out, notes = S.extract(cfg, files, say=lambda *a: None)
+            self.assertTrue(any("lake build" in n for n in notes),
+                            "a package that will not compile must be reported")
+            self.assertIn("Demo/A", out, "and the modules that do work still do")
+
+
 class OffByDefaultTests(unittest.TestCase):
     """The promise the default keeps: no toolchain is needed to read."""
 
