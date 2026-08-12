@@ -202,8 +202,11 @@ function openPDF(id, items) {
 
 /* `sel` is the focused rail row, and `mode` is only which of the two indexes
    it belongs to — the key says that for itself, so nothing sets it directly. */
+/* `all` starts true: the first thing the page says about a paper is how much
+   of it has been mechanized, before any row is picked — the marks are the
+   answer to the question a reader arrives with, and `a` puts them away. */
 var state = { mode: "paper", sel: null, q: "", proof: false,
-              all: false, marked: [], clean: false };
+              all: true, marked: [], clean: false };
 
 var $ = function (s) { return document.querySelector(s); };
 var railBody, rhead, verso, vhead, rscroll, vscroll, noteEl, liveEl;
@@ -1460,8 +1463,9 @@ function helpHTML() {
        "are the references, and each one goes there.</li>" +
        "<li>A <b>citation inside the Lean source</b> — the underlined labels " +
        "in the comments — and a <b>\\Cref link inside the PDF</b>.</li>" +
-       "<li>Every <b>green mark</b> in the paper while <b>Formalized</b> is " +
-       "on, which is that statement's way into the formalization.</li>" +
+       "<li>Every <b>green mark</b> in the paper — <b>Formalized</b>, on " +
+       "from the start — which is that statement's way into the " +
+       "formalization.</li>" +
        "<li>Any <b>name in the Lean source</b> that lights up under the " +
        "pointer: hovering says what it is, clicking goes to where it is " +
        "defined, and every other occurrence of it is marked while you are " +
@@ -1471,7 +1475,7 @@ function helpHTML() {
        "</ul>" + helpCode();
 
   h += "<h3>keys</h3><table class='hkeys'>" +
-       row("a", "<b>Formalized</b>: mark every statement with a counterpart, at once") +
+       row("a", "<b>Formalized</b>: every statement with a counterpart, marked at once — on by default; <code>a</code> puts the marks away") +
        row("c", "<b>Clean</b>: put the apparatus away, leaving the two documents") +
        row("?", "this page") +
        row("esc", "close this, or leave Clean") +
