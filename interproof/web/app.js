@@ -277,6 +277,7 @@ function docStats() {
 var fold = {}, qfold = {};           // node id -> collapsed, once the reader says so
 var PARENT = {};                     // key -> the nodes above it, outermost first
 var NODES = {};                      // node id -> node, as last rendered
+var TMP = {};                        // rows that exist only while selected
 
 /* A node is a place in the tree.  Some places are also things — a document, a
    module — and those carry a `key` and can be selected like a leaf; `hit` is
@@ -334,23 +335,54 @@ function paperRoot(q) {
     child(root, "paper/" + d.id, d.id, "doc", "doc::" + d.id,
           !q || hay.indexOf(q) >= 0);
   });
-  itemsOrdered().forEach(function (e) {
+  /* An anchor is a *part* of a statement, so it hangs under it rather than
+     beside it: `def:aeval` holds `arith` and `bool`, and `arith` holds the
+     three equations of its display.  The nesting is read off the path, which
+     is what the path was for. */
+  var parts = {};
+  var rows = itemsOrdered();
+  rows.forEach(function (e) {
+    if (e[1].kind !== "anchor") return;
+    var pk = e[1].doc + "::" + e[1].parent;
+    (parts[pk] = parts[pk] || []).push(e);
+  });
+
+  function hay(it, key) {
+    return (it.doc + " " + it.label + " " + it.title + " " + it.section + " " +
+            it.subsection + " " +
+            (BY[key] || []).map(function (l) { return l.file + " " + (l.decl || ""); })
+              .join(" ")).toLowerCase();
+  }
+  function matches(key, it) {
+    if (!q) return true;
+    if (hay(it, key).indexOf(q) >= 0) return true;
+    return (parts[key] || []).some(function (s) { return matches(s[0], s[1]); });
+  }
+  function itemRow(key, it) {
+    var ct = (BY[key] || []).length;
+    var badge = KINDSHORT[it.kind] || it.kind.slice(0, 4);
+    var nm = it.title || it.label;
+    var sub = (parts[key] || []).filter(function (s) {
+      return !q || hay(s[1], s[0]).indexOf(q) >= 0 || hay(it, key).indexOf(q) >= 0;
+    });
+    // a statement's title is prose, not an identifier
+    if (!sub.length)
+      return tleaf(key, badge, nm, ct || "·", ct > 0, state.sel === key, "txt");
+    var nd = tnode("i/" + key, nm, "itm txt", key, true);
+    nd.kd = badge;
+    nd.own = ct;
+    sub.forEach(function (s) { nd.kids.push(itemRow(s[0], s[1])); });
+    return nd;
+  }
+
+  rows.forEach(function (e) {
     var key = e[0], it = e[1];
-    var hay = (it.doc + " " + it.label + " " + it.title + " " +
-               it.section + " " + it.subsection).toLowerCase();
-    var leanHay = (BY[key] || []).map(function (l) { return l.file + " " + (l.decl || ""); }).join(" ").toLowerCase();
-    if (q && hay.indexOf(q) < 0 && leanHay.indexOf(q) < 0) return;
+    if (it.kind === "anchor") return;          // reached through its statement
+    if (!matches(key, it)) return;
     var at = child(root, "paper/" + it.doc, it.doc, "doc", "doc::" + it.doc);
     if (it.section) at = child(at, at.id + "/" + it.section, it.section, "sec");
     if (it.subsection) at = child(at, at.id + "/" + it.subsection, it.subsection, "sec");
-    var ct = (BY[key] || []).length;
-    // an anchor is a *part* of the statement above it, and it sorts with that
-    // statement; the turnstile is what says so at a glance in a flat list
-    var shown = it.title || it.label;
-    if (it.kind === "anchor") shown = "↳ " + shown;
-    at.kids.push(tleaf(key, KINDSHORT[it.kind] || it.kind.slice(0, 4),
-                       shown, ct || "·", ct > 0, state.sel === key,
-                       "txt"));   // a statement's title is prose, not an identifier
+    at.kids.push(itemRow(key, it));
   });
   return root;
 }
@@ -373,7 +405,7 @@ function leanRoot(q) {
       // a declaration reached by following a reference has no citations of
       // its own; it is still where the reader is, so the rail says so
       if (BY_DECL[k]) rows.push([d.name, BY_DECL[k].length, k]);
-      else if (state.sel === k) rows.push([d.name, 0, k]);
+      else if (state.sel === k) rows.push([d.name, 0, k, 1]);
     });
     rows = rows.filter(function (r) {
       if (!q) return true;
@@ -381,6 +413,7 @@ function leanRoot(q) {
       return (f.name + " " + r[0] + " " + cited).toLowerCase().indexOf(q) >= 0;
     });
     rows.forEach(function (r) {
+      if (r[3]) TMP[r[2]] = 1;
       at.kids.push(tleaf(r[2], r[0] === "⟨module⟩" ? "mod" : "decl", r[0],
                          r[1] || "·", r[1] > 0, state.sel === r[2]));
     });
@@ -443,13 +476,51 @@ function isOpen(nd) {
 function toggleFold(id) {
   var nd = NODES[id];
   if (!nd) return;
-  foldMap()[id] = isOpen(nd);
-  buildRail(false);
+  var shut = isOpen(nd);
+  foldMap()[id] = shut;
+  setFold(id, !shut);
+}
+
+/* Fold or unfold in the DOM.  The rail is not rebuilt for it: the rows are
+   already there, and the only thing that changes is whether their box is
+   shown. */
+function setFold(id, open) {
+  var row = railBody.querySelector('[data-nd="' + id + '"]');
+  var box = railBody.querySelector('[data-kids="' + id + '"]');
+  if (row) row.classList.toggle("open", open);
+  if (box) box.classList.toggle("hid", !open);
 }
 
 /* unfold everything above a key, so that what is selected can be seen */
 function reveal(key) {
   (PARENT[key] || []).forEach(function (id) { foldMap()[id] = false; });
+}
+
+/* Move the selection without rebuilding.  Clicking the index used to redraw
+   it, which replayed the staggered entrance of every row; what actually
+   changes is one class, and — when the row is inside something folded — the
+   boxes above it. */
+function syncRail(key) {
+  var row = railBody.querySelector('[data-key="' + key + '"]');
+  // a key with no row of its own: the Lean index grows one for a declaration
+  // that carries no citation only while it is selected, so that has to build
+  if (!row) { buildRail(); return; }
+  (PARENT[key] || []).forEach(function (id) {
+    foldMap()[id] = false;
+    setFold(id, true);
+  });
+  railBody.querySelectorAll(".row.sel").forEach(function (el) {
+    el.classList.remove("sel");
+  });
+  row.classList.add("sel");
+  railBody.querySelectorAll(".row.root").forEach(function (el) {
+    el.classList.toggle("cur", el.dataset.nd === state.mode);
+  });
+  // the transient row of a previous selection is not part of the index
+  railBody.querySelectorAll('[data-tmp="1"]').forEach(function (el) {
+    if (el !== row) el.remove();
+  });
+  row.scrollIntoView({ block: "nearest" });
 }
 
 /* ---- rail -------------------------------------------------------------- */
@@ -467,26 +538,34 @@ function nodeHTML(nd, depth, ctr) {
     (nd.cls === "root" && nd.id === state.mode ? " cur" : "") +
     (nd.key && state.sel === nd.key ? " sel" : "") +
     (nd.kids.length ? "" : " bare") +
-    (nd.key ? '" data-key="' + esc(nd.key) + '" data-open="' + esc(nd.id)
-            : '" data-fold="' + esc(nd.id)) +
-    '" style="--d:' + depth + ";" + delay(ctr) + '">' +
+    '" data-nd="' + esc(nd.id) + '"' +
+    (nd.key ? ' data-key="' + esc(nd.key) + '" data-open="' + esc(nd.id) + '"'
+            : ' data-fold="' + esc(nd.id) + '"') +
+    ' style="--d:' + depth + ";" + delay(ctr) + '">' +
     // a file with nothing under it draws no twisty and swallows no click: the
     // whole row is the file, because folding it would fold nothing
     '<span class="tw"' + (nd.key && nd.kids.length ? ' data-fold="' + esc(nd.id) + '"' : "") +
     "></span>" +
+    (nd.kd ? '<span class="kd">' + esc(nd.kd) + "</span>" : "") +
     '<span class="nm">' + esc(nd.label) + "</span>" +
-    '<span class="ct">' + nd.n + "</span></div>";
-  if (!open) return h;
+    '<span class="ct">' + (nd.own || nd.n) + "</span></div>";
+  if (!nd.kids.length) return h;
+  // Children live in a box of their own so that folding is a class on that
+  // box.  Rendered flat, folding meant rebuilding the rail, and rebuilding it
+  // replayed every row's entrance animation — the index appeared to reload
+  // whenever it was touched.
+  h += '<div class="kids' + (open ? "" : " hid") + '" data-kids="' + esc(nd.id) + '">';
   nd.kids.forEach(function (k) {
     h += k.leaf ? leafHTML(k, depth + 1, ctr) : nodeHTML(k, depth + 1, ctr);
   });
-  return h;
+  return h + "</div>";
 }
 
 function leafHTML(k, depth, ctr) {
   return '<div class="row itm' + (k.cls ? " " + k.cls : "") + (k.has ? " has" : "") +
-    (k.sel ? " sel" : "") + '" data-key="' + esc(k.key) +
-    '" style="--d:' + depth + ";" + delay(ctr) + '">' +
+    (k.sel ? " sel" : "") + '" data-key="' + esc(k.key) + '"' +
+    (TMP[k.key] ? ' data-tmp="1"' : "") +
+    ' style="--d:' + depth + ";" + delay(ctr) + '">' +
     // the kind badge stands where a node's twisty stands: a leaf has nothing
     // to fold, and the rail is 268px wide
     '<span class="kd">' + esc(k.kd) + "</span>" +
@@ -496,7 +575,7 @@ function leafHTML(k, depth, ctr) {
 
 function buildRail(show) {
   if (!M) return;
-  PARENT = {}; NODES = {};
+  PARENT = {}; NODES = {}; TMP = {};
   var roots = railRoots(state.q.toLowerCase());
   if (show !== false) reveal(state.sel);
   var ctr = { n: 0 }, html = "";
@@ -963,10 +1042,8 @@ function select(key) {
   else if (key.indexOf("mod::") === 0) showModule(key.slice(5));
   else opened = state.mode === "paper" ? selectPaper(key) : selectLean(key);
   wire(verso);
-  buildRail();
+  syncRail(key);
   location.hash = encodeURIComponent(key);
-  var sel = railBody.querySelector('[data-key="' + key + '"]');
-  if (sel) sel.scrollIntoView({ block: "nearest" });
   return opened || Promise.resolve();
 }
 
@@ -1486,7 +1563,8 @@ function boot() {
   LeanView.init(verso, vscroll, {
     // asked for, not passed: `init` runs before the manifest has been fetched
     prefixes: function () { return (M && M.grammar && M.grammar.label_prefixes) || []; },
-    label: function (l) { return findLabel(l); },
+    docs: function () { return DOCS.map(function (d) { return d.id; }); },
+    label: function (l, prefer) { return findLabel(l, prefer); },
     decl: function (name, inFile) { return findDecl(name, inFile); },
     full: function (name) { return FULL[name] || null; },
     info: function (key) {

@@ -64,33 +64,47 @@ function attr(s) { return esc(String(s)).replace(/"/g, "&quot;"); }
 var CITE_RE = null, CITE_KEY = null;
 var SEG = "[A-Za-z0-9][A-Za-z0-9\\-_.]*";
 
+function rx(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+function longest(a, b) { return b.length - a.length; }
+
 function syncPrefixes() {
   var list = (api.prefixes && api.prefixes()) || [];
-  var key = list.join("|");
+  var docs = (api.docs && api.docs()) || [];
+  var key = list.join("|") + "\u0000" + docs.join("|");
   if (key === CITE_KEY && CITE_RE) return;
   CITE_KEY = key;
   var ps = (list.length ? list : ["thm", "lem", "def", "prop", "cor",
                                   "rem", "sec", "sub", "app"]).slice();
-  ps.sort(function (a, b) { return b.length - a.length; });
-  var alt = ps.map(function (p) { return p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); });
-  CITE_RE = new RegExp("\\b(" + alt.join("|") + "):(" + SEG + "(?::" + SEG + ")*)", "g");
+  ps.sort(longest);
+  // The document a citation names is part of the citation, so it is part of
+  // the link: `paper:def:cmd` and `note, def:update` are each one thing to
+  // click, where before the reader was handed `def:cmd` and left holding a
+  // bare `paper:` beside it.  Both spellings of the marker are read, which is
+  // the pair the build itself accepts.
+  var doc = docs.length
+    ? "(?:(" + docs.slice().sort(longest).map(rx).join("|") + ")\\s*[:,]\\s*)?"
+    : "";
+  CITE_RE = new RegExp("\\b" + doc + "(" + ps.map(rx).join("|") + "):(" +
+                       SEG + "(?::" + SEG + ")*)", "g");
 }
 
 /* citations inside comments become links, in either the label or `Doc:label` form */
 function cite(text) {
   syncPrefixes();
-  return text.replace(CITE_RE, function (whole, kind, name) {
+  return text.replace(CITE_RE, function (whole, doc, kind, name) {
     var lbl = kind + ":" + name.replace(/\.$/, "");
     var cm = lbl.match(/^(.*)\.(\d+)$/);
     if (cm) lbl = cm[1];
-    var key = api.label && api.label(lbl);
+    // the named document wins where two hold the same label, which is the
+    // rule the build resolves by
+    var key = api.label && api.label(lbl, doc);
     // `def:cmd:while` names a part of `def:cmd`.  The tail is peeled the way
     // the build peels it, so a citation written finer than the paper is yet
     // annotated links to the statement instead of going dead.
     var parts = lbl.split(":");
     while (!key && parts.length > 2) {
       parts.pop();
-      key = api.label && api.label(parts.join(":"));
+      key = api.label && api.label(parts.join(":"), doc);
     }
     return key ? '<span class="citec" data-go="' + attr(key) + '">' + whole + "</span>" : whole;
   });

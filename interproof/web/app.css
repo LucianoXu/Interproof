@@ -274,6 +274,16 @@ header {
   animation: rise .4s backwards;
 }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
+
+/* A node's children live in a box, and folding hides the box.  The rail is
+   built once and thereafter only classes move: rebuilding it to fold a branch
+   replayed the staggered entrance of every row, so touching the index looked
+   like reloading it. */
+.kids.hid { display: none; }
+
+/* A statement that has parts is a node rather than a leaf, and it still wants
+   the kind badge a leaf has — the twisty and the badge sit side by side. */
+.row.nd .kd { width: 26px; }
 .row:hover { background: var(--paper-hi); }
 
 /* the guide at the row's own indent: the tree's left edge, and where a row
