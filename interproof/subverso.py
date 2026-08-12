@@ -48,7 +48,7 @@ from .lean import import_prefix
 
 # Bumped whenever `translate` changes what it produces, so a cache written by
 # an older Interproof is re-extracted rather than trusted.
-OVERLAY = 1
+OVERLAY = 2
 
 LAKEFILES = ("lakefile.toml", "lakefile.lean")
 
@@ -273,25 +273,49 @@ def _deep():
         sys.setrecursionlimit(was)
 
 
-class _Pool:
-    """The attribute table, interned.
+# Which of an attribute's fields are text, and therefore worth interning
+# rather than repeating.
+TEXT_FIELDS = ("c", "h", "d", "n", "b")
 
-    Lean code is repetitive in exactly the way that makes this worth doing:
-    every occurrence of `Nat` in a development carries the same name, the same
-    signature and the same docstring, and SubVerso's own export interns tokens
-    for the same reason.  Without it the signature of a heavily used lemma is
-    written into the manifest once per use.
+
+class _Pool:
+    """The attribute table, interned — and its strings, interned separately.
+
+    Two levels, and the second one is where the size of this overlay is won or
+    lost.  Deduplicating whole attributes is the obvious half: every occurrence
+    of `Nat` carries the same name, signature and docstring, and SubVerso's own
+    export interns tokens for exactly this reason.
+
+    But an attribute is not the unit the *text* repeats at.  Lean tags each
+    syntax production with its own `occurrence`, so `simp`'s documentation — a
+    page of it — belongs to a dozen distinct attributes, and a table keyed by
+    the whole attribute writes that page out a dozen times.  Measured on the
+    tracked example, which is four hundred lines: 80 distinct docstrings stored
+    494 times, two thirds of the entire overlay.  So the strings live in their
+    own table and an attribute holds indices into it, and what the docstrings
+    cost becomes what Lean's vocabulary costs rather than what this
+    formalization's use of it costs.
     """
 
     def __init__(self) -> None:
         self.items: list[dict] = []
         self.ix: dict[str, int] = {}
+        self.strs: list[str] = []
+        self.six: dict[str, int] = {}
+
+    def text(self, v: str) -> int:
+        if v not in self.six:
+            self.six[v] = len(self.strs)
+            self.strs.append(v)
+        return self.six[v]
 
     def add(self, attr: dict) -> int:
-        k = json.dumps(attr, sort_keys=True, ensure_ascii=False)
+        packed = {k: (self.text(v) if k in TEXT_FIELDS else v)
+                  for k, v in attr.items()}
+        k = json.dumps(packed, sort_keys=True)
         if k not in self.ix:
             self.ix[k] = len(self.items)
-            self.items.append(attr)
+            self.items.append(packed)
         return self.ix[k]
 
 
@@ -348,8 +372,9 @@ def _flatten(data: dict, key: int, pool: _Pool, memo: dict) -> tuple[str, list]:
 def translate(mod: dict, text: str) -> dict:
     """SubVerso's export for one module, as the overlay the viewer reads.
 
-        {"attrs": [ {c, h?, d?, n?, b?, def?}, … ],
-         "toks":  [line, col, len, attr, …],       # flat, in source order
+        {"strs":  [ "…", … ],                       # every string, once
+         "attrs": [ {c, h?, d?, n?, b?, def?}, … ],  # values index `strs`
+         "toks":  [line, col, len, attr, …],         # flat, in source order
          "defs":  [[fully.qualified.name, line], …]}
 
     `line` is 1-based; `col` and `len` are UTF-16 code units, which is what a
@@ -380,7 +405,7 @@ def translate(mod: dict, text: str) -> dict:
     if missed and missed == len([i for i in items if isinstance(i, dict)]):
         raise SubVersoError("no command's highlighted text occurs in the "
                             "module — the export does not describe this file")
-    return {"attrs": pool.items, "toks": toks, "defs": defs,
+    return {"strs": pool.strs, "attrs": pool.items, "toks": toks, "defs": defs,
             **({"missed": missed} if missed else {})}
 
 
@@ -661,9 +686,19 @@ def _run(lake: str, root: Path, mod: str, cache: Path) -> dict:
     if not dest.is_file():
         raise RuntimeError(_clip(err) or f"{EXE} wrote no output")
     try:
-        return json.loads(dest.read_text(encoding="utf-8"))
+        raw = dest.read_text(encoding="utf-8")
     finally:
         dest.unlink(missing_ok=True)
+    try:
+        return json.loads(raw)
+    except ValueError:
+        # The extractor opens its output file *before* it elaborates, so a
+        # module it cannot import leaves an empty file behind and a reason on
+        # stderr.  Reporting the JSON parse error instead would say "Expecting
+        # value: line 1 column 1" about a build failure, and send whoever reads
+        # the note to look at this module rather than at their module.
+        raise RuntimeError(_clip(err) or
+                           f"{EXE} wrote no usable JSON") from None
 
 
 def _clip(s: str, limit: int = 400) -> str:

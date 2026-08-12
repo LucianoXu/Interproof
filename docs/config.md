@@ -89,6 +89,14 @@ subdirectories may hold the same name and the directory structure survives into
 the file index. Choosing a `root` too deep flattens the tree the index exists
 to show.
 
+**Directories beginning with a dot are never descended into**, and that matters
+more than it sounds: `lake` checks every dependency out under
+`.lake/packages/`, so a `root` pointed at a package root would otherwise read
+the whole of Mathlib as if it were your formalization. The symptom would not be
+an error — it would be a reader with four thousand modules in the index and a
+build reporting success. Use `exclude` for anything else that is present but
+not part of the development.
+
 Nothing here names the Lean package: import edges are resolved by finding the
 prefix that the imports which do resolve agree on.
 
@@ -143,8 +151,19 @@ What it costs:
 
 - **size.** The overlay is the one part of a manifest that grows with the size
   of the *formalization* rather than with the size of the correspondence.
-  `build` reports what it added; `--no-inline` is the escape when the page has
-  to stay small.
+  `build` reports what it added, measured rather than estimated — 116 KB for
+  the 1 845 tokens of the tracked example.
+
+  Most of that is text, and most of the text is Lean's own: the docstring of
+  `simp`, the signature of `Nat.succ`. It is therefore interned **once for the
+  whole build**, not per module and not per token, because a docstring belongs
+  to as many syntax productions as mention it and to as many modules as use
+  it. Storing it per attribute cost 2.7× as much on the example, and per
+  module 1.3× again on five modules — a ratio that grows with the module
+  count. The consequence is that the overlay scales with the *vocabulary* a
+  development touches plus a flat ~11 bytes a token, rather than with the
+  product of the two. `--no-inline` remains the escape when a page has to stay
+  small.
 
 **Nothing about the artifact changes.** Elaboration happens on the machine that
 builds, and what it learned is baked into the manifest; the folder that comes

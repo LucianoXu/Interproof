@@ -795,7 +795,7 @@ function leanShow(keys, focus, groups, total) {
   leanHeadShow(keys, focus, groups, total);
 
   var same = keys.filter(function (k) { return k.split("::")[0] === fname; });
-  LeanView.load(fname, FILE[fname].text, FILE[fname].sem);
+  LeanView.load(fname, FILE[fname].text, FILE[fname].sem, M.lean_strs);
   /* one key can hold several bands, so which of them is the focused one is
      carried on the band rather than being an index into a parallel list */
   var bands = [];
@@ -927,7 +927,7 @@ function showModule(name) {
   vhead.querySelectorAll("[data-mod]").forEach(function (el) {
     el.onclick = function () { select("mod::" + el.dataset.mod); };
   });
-  LeanView.load(name, FILE[name].text, FILE[name].sem);
+  LeanView.load(name, FILE[name].text, FILE[name].sem, M.lean_strs);
   LeanView.clear();
   if (moved) LeanView.top();
   wire(verso);

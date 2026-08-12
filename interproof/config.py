@@ -167,11 +167,23 @@ class Config:
         Recursive because a formalization organises itself in directories, and
         a module is keyed by its path rather than its file name — two
         subdirectories may hold the same name.
+
+        Dot-directories are never descended into, and that is not a nicety.
+        `lake` checks every dependency out under `.lake/packages/`, so a
+        `[formal] root` pointed at a package root — the obvious thing to
+        write — otherwise reads the whole of Mathlib as if it were the
+        formalization: thousands of modules in the index, the correspondence
+        drowned in them, and a build that reports success.  The symptom is a
+        module count far larger than the development, which is exactly the
+        kind of failure that looks like success.
         """
         out = []
         for f in sorted(self.lean_root.rglob("*.lean")):
-            rel = f.relative_to(self.lean_root).as_posix()
-            if any(f.match(p) or Path(rel).match(p) for p in self.lean_exclude):
+            rel = f.relative_to(self.lean_root)
+            if any(part.startswith(".") for part in rel.parts[:-1]):
+                continue
+            posix = rel.as_posix()
+            if any(f.match(p) or Path(posix).match(p) for p in self.lean_exclude):
                 continue
             out.append(f)
         return out

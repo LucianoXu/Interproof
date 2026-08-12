@@ -220,11 +220,18 @@ not require SubVerso, a module that will not compile — each is reported with
 its reason and leaves the reader it would have had anyway.
 
 ```bash
-interproof build --elaborate       # just this once
+cd examples/demo
+interproof build --elaborate       # the tracked example is a Lean package
 interproof build --no-elaborate    # …or not this once
 ```
 
-Setup, cost and caching: **[docs/config.md](docs/config.md#elaborate--what-the-machine-page-can-say-about-itself)**.
+The example is where to see the difference: it is a `lake` package requiring
+SubVerso, it depends on nothing but Lean core, and `--elaborate` on it costs
+about twenty seconds the first time and two after that.
+
+What it costs the artifact is reported, not estimated — on that example, 1 845
+tokens over five modules add 116 KB to a manifest. Setup, caching and the size
+argument: **[docs/config.md](docs/config.md#elaborate--what-the-machine-page-can-say-about-itself)**.
 - **Clean** (`c`): the apparatus put away, leaving the two documents.
 - `/` filter — it searches both indexes at once, by statement, by declaration
   and by file name, and shows what it found in each · `j`/`k` move · `h`/`l`

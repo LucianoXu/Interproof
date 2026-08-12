@@ -89,7 +89,7 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False,
         all_refs.extend(refs)
     lean_files = import_order(lean_files)
     decl_refs = declaration_uses(lean_files)
-    lean_defs, sem = semantics(cfg, lean_files, elaborate, say)
+    lean_strs, lean_defs, sem = semantics(cfg, lean_files, elaborate, say)
 
     links, unresolved = resolve(all_refs, labels, cfg.documents)
     if not links:
@@ -121,6 +121,9 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False,
         # defines it, which is what turns a token into a jump.  Empty, and the
         # viewer falls back to matching what the source wrote.
         "lean_defs": lean_defs,
+        # every string the overlays refer to, once for the whole build: the
+        # docstring of `simp` belongs to as many modules as mention it
+        "lean_strs": lean_strs,
         "links": links,
         "by_item": by_item,
         "unresolved": unresolved,
@@ -155,13 +158,13 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False,
 # --------------------------------------------------------------------------
 
 def semantics(cfg: Config, files: list[dict], want: bool | None,
-              say) -> tuple[dict[str, str], dict]:
+              say) -> tuple[list[str], dict[str, str], dict]:
     """Attach what Lean knows to each module, if this build was asked to.
 
-    Returns the name index — `Nat.succ` -> the declaration of *this* build that
-    defines it — and a summary for the stats.  The overlay itself is hung on
-    each module's record, because that is what the viewer already has in hand
-    when it renders one.
+    Returns the build's string table, the name index — `Nat.succ` -> the
+    declaration of *this* build that defines it — and a summary for the stats.
+    The overlay itself is hung on each module's record, because that is what
+    the viewer already has in hand when it renders one.
 
     Nothing here raises.  Elaboration is an enrichment: a missing toolchain, a
     project that does not compile, a SubVerso this version cannot read — all of
@@ -172,43 +175,69 @@ def semantics(cfg: Config, files: list[dict], want: bool | None,
     """
     on = cfg.elaborate if want is None else want
     if not on:
-        return {}, {"on": False}
+        return [], {}, {"on": False}
 
-    from .subverso import SubVersoError, extract
+    from .subverso import TEXT_FIELDS, SubVersoError, extract
 
     try:
         overlays, notes = extract(cfg, files, say=say)
     except SubVersoError as e:
         say(f"!! not elaborated: {e}")
-        return {}, {"on": True, "failed": str(e).split("\n")[0]}
+        return [], {}, {"on": True, "failed": str(e).split("\n")[0]}
     except Exception as e:                             # noqa: BLE001 - reported
         say(f"!! not elaborated: {type(e).__name__}: {e}")
-        return {}, {"on": True, "failed": f"{type(e).__name__}: {e}"}
+        return [], {}, {"on": True, "failed": f"{type(e).__name__}: {e}"}
 
     for line in notes:
         say(f"!! {line}")
 
     defs: dict[str, str] = {}
-    tokens, spent = 0, 0
+    tokens = 0
+
+    # One string table for the build, not one per module.  What a module's
+    # overlay spends on text is mostly Lean's own vocabulary — the docstring
+    # of `simp`, the signature of `Nat.succ` — and that vocabulary is the same
+    # in every module of the development, so a per-module table stores it once
+    # per module.  The extraction cache stays module-local, because a module's
+    # overlay has to survive its neighbours changing; the tables are merged
+    # here instead, on the way into the manifest.
+    strs: list[str] = []
+    at: dict[str, int] = {}
+
+    def sid(s: str) -> int:
+        if s not in at:
+            at[s] = len(strs)
+            strs.append(s)
+        return at[s]
+
     for f in files:
         ov = overlays.get(f["name"])
         if not ov:
             continue
-        f["sem"] = {k: v for k, v in ov.items() if k != "defs"}
+        local = ov.get("strs") or []
+        f["sem"] = {
+            "attrs": [{k: (sid(local[v]) if k in TEXT_FIELDS else v)
+                       for k, v in a.items()} for a in ov.get("attrs", [])],
+            "toks": ov.get("toks", []),
+        }
         tokens += len(ov.get("toks", [])) // 4
-        # what this costs the artifact, measured rather than guessed: the
-        # overlay is the one part of a manifest that scales with the size of
-        # the formalization, and it is inlined into a page somebody downloads
-        spent += len(json.dumps(f["sem"], ensure_ascii=False,
-                                separators=(",", ":")))
         for full, line in ov.get("defs", []):
             key = _owner(f, full, line)
             if key:
                 defs[full] = key
 
-    return defs, {"on": True, "modules": len(overlays), "of": len(files),
-                  "tokens": tokens, "names": len(defs), "bytes": spent,
-                  **({"notes": len(notes)} if notes else {})}
+    # what this costs the artifact, measured rather than guessed: the overlay
+    # is the one part of a manifest that scales with the size of the
+    # formalization, and it is inlined into a page somebody downloads
+    spent = sum(len(json.dumps(f["sem"], ensure_ascii=False,
+                               separators=(",", ":")))
+                for f in files if "sem" in f)
+    spent += len(json.dumps(strs, ensure_ascii=False, separators=(",", ":")))
+
+    return strs, defs, {"on": True, "modules": len(overlays), "of": len(files),
+                        "tokens": tokens, "names": len(defs), "bytes": spent,
+                        "strings": len(strs),
+                        **({"notes": len(notes)} if notes else {})}
 
 
 def _owner(f: dict, full: str, line: int) -> str:

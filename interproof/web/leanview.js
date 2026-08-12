@@ -34,7 +34,7 @@
 var FILES = {};                 // name -> { text, html, lines, sem }
 var cur = null, shown = null, lh = 0, top0 = 0;  // what is drawn, and its metrics
 var host, scroller, api = {};   // #leanpane, its scrolling ancestor, the lookups
-var SEM = null;                 // the overlay of the file on screen, if any
+var SEM = null, STRS = [];      // the overlay of the file on screen, and the build's strings
 var BIND = [];                  // occurrence identities, interned per file
 
 var KW = new Set(("theorem lemma def abbrev instance structure inductive class deriving " +
@@ -156,6 +156,15 @@ function highlight(code, mod) {
    formalization; four numbers a token rather than an object a token is the
    difference between a page that inlines and one that does not. */
 
+/* An attribute's text fields are indices into the build's string table, which
+   is one table for the whole manifest rather than one per module.  Lean tags
+   each syntax production separately, so a single docstring belongs to many
+   attributes and to many modules; stored per attribute it was two thirds of
+   the overlay, and stored per module it was that again per module. */
+function str(i) {
+  return (i === undefined || i === null) ? "" : (STRS[i] || "");
+}
+
 /* A token may cover several lines — a block comment is one token — and the
    pane is rendered a line at a time, so the run is first cut at the line
    boundaries.  The pieces of one token keep its index, so hovering any of
@@ -181,17 +190,19 @@ function pieces(lines, sem) {
 function tokenHTML(src, col, len, a, id, sem) {
   var at = sem.attrs[a] || {};
   var body = esc(src.slice(col, col + len));
-  var cls = at.c || "unknown";
+  var cls = str(at.c) || "unknown";
   var extra = ' data-t="' + id + '"';
 
   if (cls.indexOf("comment") >= 0 || cls === "doc-comment") body = cite(body);
-  if (at.b) {
-    var b = BIND.indexOf(at.b);
-    if (b < 0) { BIND.push(at.b); b = BIND.length - 1; }
+  var bind = str(at.b);
+  if (bind) {
+    var b = BIND.indexOf(bind);
+    if (b < 0) { BIND.push(bind); b = BIND.length - 1; }
     extra += ' data-b="' + b + '"';
   }
-  if (at.h || at.d) extra += ' data-i="' + a + '"';
-  var key = at.n && api.full && api.full(at.n);
+  if (at.h !== undefined || at.d !== undefined) extra += ' data-i="' + a + '"';
+  var name = str(at.n);
+  var key = name && api.full && api.full(name);
   if (key && !at.def) { cls += " ref"; extra += ' data-def="' + attr(key) + '"'; }
   else if (at.def) cls += " isdef";
 
@@ -260,8 +271,8 @@ function cardHTML(el) {
 
   if (SEM && el.dataset.i !== undefined) {
     var at = SEM.attrs[+el.dataset.i] || {};
-    sig = at.h || "";
-    doc = at.d || "";
+    sig = str(at.h);
+    doc = str(at.d);
   }
   if (!sig && !doc && key && api.info) {
     /* the source path, and the honest wording for it: this is the declaration
@@ -377,8 +388,9 @@ function wire() {
 
 /* ---- rendering --------------------------------------------------------- */
 
-function load(name, text, sem) {
+function load(name, text, sem, strs) {
   sem = sem || null;
+  STRS = strs || [];
   var f = FILES[name];
   /* Keyed on what was rendered, not on the module's name.  Two things move
      under a cache keyed by name alone: a live session replaces the manifest

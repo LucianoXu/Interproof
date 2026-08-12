@@ -34,3 +34,8 @@ __pycache__/
 
 # browser-automation leftovers from interactive debugging
 /.playwright-mcp/
+
+# Lake's build output and its dependency checkouts.  `examples/demo/lean` is a
+# Lean package so that `interproof build --elaborate` can be demonstrated on
+# the tracked example; what lake puts there is not part of the example.
+.lake/

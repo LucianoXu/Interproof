@@ -15,6 +15,7 @@ the several-commands-per-file live.
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -56,6 +57,10 @@ class TranslateTests(unittest.TestCase):
                     self.assertGreaterEqual(ln, 1)
                     self.assertLessEqual(ln, len(lines))
                     self.assertLess(a, len(ov["attrs"]))
+                    for k, v in ov["attrs"][a].items():
+                        if k in S.TEXT_FIELDS:
+                            self.assertLess(v, len(ov["strs"]),
+                                            f"attr.{k} indexes past the table")
                     got = slice16(lines[ln - 1], col, n)
                     # a token may be clipped by the end of its line; what must
                     # hold is that it starts where the overlay says it does
@@ -234,6 +239,44 @@ class SignatureTests(unittest.TestCase):
                                  "a signature must not end in its own body")
 
 
+class DependencyCheckoutTests(unittest.TestCase):
+    """A package's dependencies are not the formalization.
+
+    `lake` checks every dependency out under `.lake/packages/`, so the moment
+    `[formal] root` points at a package root — the obvious thing to write, and
+    what the tracked example now does — the whole of Mathlib is under it.  The
+    symptom is not an error: it is a reader with four thousand modules in the
+    index, the correspondence lost among them, and a build reporting success.
+    """
+
+    def test_dot_directories_are_never_descended_into(self):
+        cfg = C.load(DEMO / "interproof.toml")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "lean"
+            (root / "Demo").mkdir(parents=True)
+            (root / "Demo" / "Real.lean").write_text("def mine := 1\n")
+            dep = root / ".lake" / "packages" / "mathlib" / "Mathlib"
+            dep.mkdir(parents=True)
+            (dep / "Huge.lean").write_text("def theirs := 2\n")
+            (root / ".git").mkdir()
+            (root / ".git" / "Odd.lean").write_text("def neither := 3\n")
+
+            moved = type(cfg)(**{**cfg.__dict__, "lean_root": root})
+            got = [p.name for p in moved.lean_files()]
+            self.assertEqual(got, ["Real.lean"],
+                             "a dependency checkout was read as the formalization")
+
+    def test_the_example_reads_only_its_own_modules(self):
+        """The example acquired a lakefile so `--elaborate` can be shown on it.
+
+        That put `.lake/packages/subverso` — some fifty modules — inside the
+        formal root, and this is the assertion that it stays out of the reader.
+        """
+        cfg = C.load(DEMO / "interproof.toml")
+        for p in cfg.lean_files():
+            self.assertNotIn(".lake", p.parts, f"{p} is a dependency, not this development")
+
+
 class OffByDefaultTests(unittest.TestCase):
     """The promise the default keeps: no toolchain is needed to read."""
 
@@ -254,8 +297,8 @@ class OffByDefaultTests(unittest.TestCase):
         cfg = C.load(DEMO / "interproof.toml")
         cfg = type(cfg)(**{**cfg.__dict__, "lake": "definitely-not-a-real-lake"})
         said = []
-        defs, sem = M.semantics(cfg, [], True, said.append)
-        self.assertEqual(defs, {})
+        strs, defs, sem = M.semantics(cfg, [], True, said.append)
+        self.assertEqual((strs, defs), ([], {}))
         self.assertTrue(sem["on"] and sem.get("failed"))
         self.assertTrue(any("not elaborated" in s for s in said))
 

@@ -1,0 +1,25 @@
+# The example as a Lean package.
+#
+# Interproof does not need this: it reads `.lean` files as text, and the demo
+# built for years without a toolchain anywhere near it.  This is here for the
+# one thing that does need it — `interproof build --elaborate`, which hands
+# each module to SubVerso for hover types, go-to-definition and Lean's own
+# colouring.  Without a package there is nothing for `lake` to run in, so the
+# example could demonstrate the default path and not the other one.
+#
+# No Mathlib, deliberately: the demo depends on nothing but core, so `lake
+# build` here is seconds rather than the better part of an hour.
+name = "demo"
+defaultTargets = ["Demo"]
+
+[[lean_lib]]
+name = "Demo"
+# There is no `Demo.lean` root — the development is a directory of modules and
+# the reader's index is that directory — so the library is the glob rather
+# than a root file that imports everything for no other reason.
+globs = ["Demo.+"]
+
+[[require]]
+name = "subverso"
+git = "https://github.com/leanprover/subverso"
+rev = "main"
