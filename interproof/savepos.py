@@ -172,7 +172,12 @@ def _patch(root: Path, doc_root: Path, main: Path,
             spans.append((hits[0].start(), hits[0].end(), path))
 
         for start, end, path in sorted(spans, reverse=True):
-            source = (source[:start] + r"\ipmark{%s(}" % path
+            # A span that opens a paragraph puts the opening whatsit in
+            # vertical mode, where the point it records sits on no typeset
+            # line and the span is lost.  Entering horizontal mode first fixes
+            # exactly that case, and the guard keeps it out of math and of
+            # paragraphs already begun, where \leavevmode is not always legal.
+            source = (source[:start] + r"\ifvmode\leavevmode\fi\ipmark{%s(}" % path
                       + source[start:end] + r"\ipmark{%s)}" % path
                       + source[end:])
             done += 1
