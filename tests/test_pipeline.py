@@ -494,3 +494,50 @@ class BuildTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnchorGeometryTests(unittest.TestCase):
+    """The rule that keeps an anchor's band off its neighbour's clause.
+
+    No LaTeX and no PDF: what is under test is which box `start` picks out of
+    a set, and that is arithmetic.  The set is the one a real document
+    produced — `synctex view` answered the second `\\item` of a definition
+    with a box from the first — so the numbers are a recording, not a guess.
+    """
+
+    def _synctex(self, boxes):
+        from interproof.synctex import SyncTeX
+        st = SyncTeX.__new__(SyncTeX)
+        st._at = lambda name, line: tuple(boxes.get(line, ()))
+        return st
+
+    def _box(self, page, top, height=10.0):
+        from interproof.synctex import Box
+        return Box(page, 136.6, top, 331.9, height)
+
+    def test_start_ignores_a_stray_from_the_previous_clause(self):
+        # line 258 is `\item \emph{Acyclicity:} …`; 344 is where the *first*
+        # item begins, and synctex hands it back for this line as well
+        st = self._synctex({258: [self._box(4, 344.0), self._box(4, 411.0),
+                                  self._box(4, 423.0)]})
+        self.assertEqual(st.start("d.tex", 258).top, 344.0,
+                         "without a floor the stray is taken, as it is today")
+        self.assertEqual(st.start("d.tex", 258, after=(4, 401.0)).top, 411.0,
+                         "with the previous clause's end as a floor it is not")
+
+    def test_a_floor_never_loses_an_item(self):
+        st = self._synctex({7: [self._box(1, 100.0)]})
+        self.assertEqual(st.start("d.tex", 7, after=(1, 500.0)).top, 100.0,
+                         "an anchor with nothing below the floor keeps what "
+                         "it had rather than vanishing")
+
+    def test_a_floor_may_cross_a_page(self):
+        st = self._synctex({9: [self._box(1, 700.0), self._box(2, 90.0)]})
+        self.assertEqual(st.start("d.tex", 9, after=(1, 710.0)).page, 2)
+
+    def test_verify_reads_the_band_back(self):
+        from interproof.synctex import SyncTeX
+        st = SyncTeX.__new__(SyncTeX)
+        st._doc = None            # no text layer: nothing to check against
+        self.assertTrue(st.verify({"page": 1, "top": 0, "x": 0, "w": 10,
+                                   "bottom": 10}, "four whole english words"))

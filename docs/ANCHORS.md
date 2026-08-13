@@ -229,6 +229,43 @@ steps before it have shown it is needed.
    private copy of the project; the source on disk keeps not one macro, and
    the PDF the reader is shown is still the clean build.
 
+### What step 2 got wrong, and how it is caught
+
+Step 2 placed an anchor by asking SyncTeX for its line, exactly as a statement
+is placed, and that turned out not to be the same problem. A statement begins
+at a `\begin{...}`; an anchor begins in the middle of a paragraph, and there
+`synctex view` answers a line with the clause's own typeset lines **and** boxes
+belonging to the clause before it — TeX breaks a paragraph while the input
+pointer already stands on the line that triggered the break. Taking the topmost
+box of that set opens the band on the wrong clause. Measured on a real
+definition with three `\item`s: the second banded from the first, the third
+from the second, and in a four-item list the last banded entirely above its own
+text.
+
+Two things follow, and both are in the code:
+
+- **A floor.** The anchors of one statement are placed together, in document
+  order, and each takes its top from the boxes below where the previous clause
+  ended. Clauses of one statement do not overlap, so this is a bound rather
+  than a guess; an anchor with nothing below the floor keeps what it had, so a
+  floor can never lose an item. On the pair this was found in it repaired 4 of
+  the 17 misplaced bands.
+- **A read-back.** The rest cannot be recovered by guessing better — one
+  clause's last lines are sometimes attributed to the next clause's line, and
+  no rule over that set can tell. So the band is read back off the page and
+  compared with the words of the source it came from; when they disagree the
+  anchor is *reported* rather than kept quietly. A coarse band is a small
+  disappointment, a confidently wrong one is a lie, and the difference is worth
+  a line of output. The remedy the message names is the one that always works:
+  give that anchor a quoted span, which `\pdfsavepos` measures and SyncTeX
+  never sees.
+
+Attempts that measurement rejected, recorded so they are not tried again:
+grouping the boxes into runs and taking the largest (the *next* clause is often
+longer, so bands moved one clause down — 17 misplaced became 37), and matching
+runs to clauses one for one (the clauses of a paragraph are contiguous and pool
+into a single run — 42).
+
 ### What step 2 measured
 
 It was supposed to answer whether the correspondence people want at this
