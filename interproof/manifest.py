@@ -559,8 +559,29 @@ def attach_pdf_rects(cfg: Config, items: dict[str, TexItem], *,
             for it, r in zip(group, st.anchor_rects(file, spans)):
                 it.rect = r
                 found += bool(r)
-                if r and not st.verify(r, source_of(d, it)):
+                if not r:
+                    continue
+                # A band that does not cover what it names cannot be
+                # refined -- narrowing it to words found in the wrong place
+                # would turn a visibly coarse error into an invisible one.
+                text = source_of(d, it)
+                if not st.verify(r, text):
                     misplaced.append(f"{d.id}::{it.label}")
+                    continue
+                # a line box is the full measure, so a prose clause starting
+                # mid-line bands its neighbour's words too; the page's own
+                # words say where it really runs
+                pieces = st.prose_rects(r, text)
+                if pieces:
+                    it.rects = pieces
+                    it.rect = {"page": pieces[0]["page"],
+                               "end_page": pieces[-1]["page"],
+                               "top": min(q["top"] for q in pieces),
+                               "bottom": max(q["bottom"] for q in pieces),
+                               "x": round(min(q["x"] for q in pieces), 2),
+                               "w": round(max(q["x"] + q["w"] for q in pieces)
+                                          - min(q["x"] for q in pieces), 2)}
+
 
         for it in items.values():
             if it.doc != d.id or it.kind not in cfg.grammar.environments:

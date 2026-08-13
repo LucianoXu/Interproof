@@ -83,12 +83,26 @@ def _run(pdf: Path, srcdir: Path, name: str, line: int) -> list[Box]:
 # previous clause ended is not excluded by a rounding difference.
 _EPS = 0.5
 
+# How far outside the coarse band a word may sit and still be part of the
+# clause: a line's leading, since the band's edges are baselines.
+_SLACK = 6.0
+# How many page words a source word may skip over before the alignment is
+# considered lost: enough for a formula between two words, not enough to walk
+# into the next sentence.
+_DRIFT = 8
+
 _MACRO = re.compile(r"\\[A-Za-z@]+|%.*")
+_ENV = re.compile(r"\\(?:begin|end)\{[^}]*\}")
 
 
 def _detex(text: str) -> str:
-    """Enough of the source stripped to leave the words a reader would see."""
-    return _MACRO.sub(" ", text)
+    """Enough of the source stripped to leave the words a reader would see.
+
+    Environment names go too: `\\begin{itemize}` puts "itemize" in the source
+    and nothing on the page, and a word that cannot be found is a word that
+    breaks a match.
+    """
+    return _MACRO.sub(" ", _ENV.sub(" ", text))
 
 
 class SyncTeX:
@@ -177,6 +191,90 @@ class SyncTeX:
             if r:
                 floor = (r["end_page"], r["bottom"])
         return out
+
+
+    def prose_rects(self, rect: dict, want: str) -> list[dict] | None:
+        """The band a *prose* clause really occupies, word by word.
+
+        SyncTeX's unit is the typeset line, and a line box is the full
+        measure.  A clause that begins mid-line therefore bands its
+        neighbour's words as well as its own — the band is not wrong
+        vertically, it is simply as wide as the page every time.  A quoted
+        anchor escapes that because `\\pdfsavepos` marks two points; this does
+        the same without asking the author to quote anything, by reading the
+        page's own words and keeping the ones the clause actually claims.
+
+        The coarse band says which lines to look at, so the same sentence
+        occurring twice on a page is not a hazard.  Prose only: the maths comes
+        back in an alphabet the source does not use, and a clause whose head or
+        tail is a formula keeps its line band rather than being guessed at.
+        """
+        page = self._text()
+        if page is None:
+            return None
+        target = [w.lower() for w in re.findall(r"[A-Za-z]{2,}", _detex(want))]
+        if len(target) < 4:
+            return None
+        words = []
+        for pno in range(rect["page"], rect.get("end_page", rect["page"]) + 1):
+            mid = lambda w: (w[1] + w[3]) / 2
+            lo = rect["top"] - _SLACK if pno == rect["page"] else -1e9
+            hi = rect["bottom"] + _SLACK if pno == rect.get(
+                "end_page", rect["page"]) else 1e9
+            words += [(pno, *w) for w in page[pno - 1].get_text("words")
+                      if lo <= (w[1] + w[3]) / 2 <= hi]
+        if not words:
+            return None
+        flat = [re.sub(r"[^a-z]", "", w[5].lower()) for w in words]
+
+        def same(page_word: str, source_word: str) -> bool:
+            # a page word can carry maths on either side -- `S2)-local.` for
+            # the source's `local` -- and can be hyphenated across a line, so
+            # containment either way is the honest test at this granularity
+            if not page_word:
+                # a page token with no letters is maths or a number: it can
+                # sit between two words of the clause, but it can never *be*
+                # one, and letting it match consumed the theorem's own number
+                return False
+            return (page_word.startswith(source_word)
+                    or source_word.startswith(page_word)
+                    or source_word in page_word)
+
+        # The source's words and the page's are not a word-for-word
+        # correspondence: maths lands between them (`map is (W1 ∪W2,
+        # S1 ∪S2)-local`), so an n-gram of the source is rarely three
+        # consecutive words of the page.  Walking both in order and consuming
+        # what matches is what survives that; a run is accepted only when it
+        # accounts for most of the clause, which is what keeps a stray
+        # `the` from claiming half a page.
+        hits: list[int] = []
+        at = 0
+        for word in target:
+            probe = at
+            while probe < len(flat) and probe - at <= _DRIFT:
+                if same(flat[probe], word):
+                    hits.append(probe)
+                    at = probe + 1
+                    break
+                probe += 1
+        if len(hits) < max(4, int(len(target) * 0.5)):
+            return None
+        span = sorted(words[hits[0]:hits[-1] + 1],
+                      key=lambda w: (w[0], w[2], w[1]))
+        # one rectangle per typeset line: the first and the last are partial,
+        # which is the whole point of doing this
+        out: list[dict] = []
+        for pno, x0, y0, x1, y1, *_ in span:
+            last = out[-1] if out else None
+            if last and last["page"] == pno and abs(last["top"] - y0) < 3:
+                last["x"] = min(last["x"], round(x0, 2))
+                last["w"] = round(max(last["x"] + last["w"], x1) - last["x"], 2)
+                last["bottom"] = max(last["bottom"], round(y1, 2))
+            else:
+                out.append({"page": pno, "end_page": pno, "top": round(y0, 2),
+                            "bottom": round(y1, 2), "x": round(x0, 2),
+                            "w": round(x1 - x0, 2), "precise": True})
+        return out or None
 
     def verify(self, rect: dict, want: str) -> bool:
         """Does the band actually cover the words it claims?

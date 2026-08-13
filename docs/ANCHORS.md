@@ -260,6 +260,36 @@ Two things follow, and both are in the code:
   give that anchor a quoted span, which `\pdfsavepos` measures and SyncTeX
   never sees.
 
+### A line box is the full measure
+
+The band was still as wide as the page every time, because SyncTeX's unit is
+the typeset *line* and a line box spans the whole measure. For a clause that
+begins mid-line — "…and suppose the **oracle premise**: at every call site…" —
+that bands the sentence before it as well, which reads as a claim about text
+the anchor does not name.
+
+A quoted anchor escapes this by marking two points, and it turns out the same
+answer is available without asking the author to quote anything: the page knows
+where its own words are. The coarse band says which lines to look at, the
+clause's words are aligned against the page's, and the run they cover becomes
+one rectangle per typeset line — partial at the head and the tail, which is
+what a text selection looks like and what the reader already draws (`rects`).
+
+Two things the alignment has to survive, both learned from the pair:
+
+- **The two word streams do not correspond.** Maths lands between the words —
+  `map is (W1 ∪W2, S1 ∪S2)-local` for a source that reads `map is …-local` — so
+  an n-gram of the source is rarely three consecutive words of the page. Both
+  streams are walked in order and what matches is consumed; a run is kept only
+  when it accounts for most of the clause.
+- **A token with no letters can sit between two words but can never be one.**
+  Letting it match consumed the theorem's own number, and the band opened on
+  `Theorem 2 (interaction transport).` instead of on `Let R be classical`.
+
+A clause with too little prose to align — a display, an equation — keeps its
+line band, which is honest: nothing was measured, so nothing is claimed.
+On the pair this took 50 precise bands of 185 to **131**; the rest are maths.
+
 Attempts that measurement rejected, recorded so they are not tried again:
 grouping the boxes into runs and taking the largest (the *next* clause is often
 longer, so bands moved one clause down — 17 misplaced became 37), and matching

@@ -541,3 +541,71 @@ class AnchorGeometryTests(unittest.TestCase):
         st._doc = None            # no text layer: nothing to check against
         self.assertTrue(st.verify({"page": 1, "top": 0, "x": 0, "w": 10,
                                    "bottom": 10}, "four whole english words"))
+
+
+class ProseBandTests(unittest.TestCase):
+    """Narrowing a line band to the words the clause actually claims.
+
+    The page is faked: what is under test is the alignment between a source
+    clause and a page's words, and that needs no PDF.  The word list is the
+    shape a real one has — maths comes back as tokens with no letters, sitting
+    between the words of the sentence.
+    """
+
+    def _synctex(self, words_by_page):
+        from interproof.synctex import SyncTeX
+
+        class FakePage:
+            def __init__(self, words): self._w = words
+            def get_text(self, kind, **kw): return self._w
+
+        st = SyncTeX.__new__(SyncTeX)
+        st._doc = [FakePage(w) for w in words_by_page]
+        st._text = lambda: st._doc
+        return st
+
+    def test_a_clause_starting_mid_line_is_narrowed_to_itself(self):
+        page = [(50, 100, 90, 110, "Theorem", 0, 0, 0),
+                (92, 100, 99, 110, "2", 0, 0, 1),
+                (101, 100, 130, 110, "(transport).", 0, 0, 2),
+                (132, 100, 145, 110, "Let", 0, 0, 3),
+                (147, 100, 152, 110, "R", 0, 0, 4),
+                (154, 100, 162, 110, "be", 0, 0, 5),
+                (164, 100, 195, 110, "classical,", 0, 0, 6),
+                (197, 100, 210, 110, "not", 0, 0, 7),
+                (212, 100, 240, 110, "reading", 0, 0, 8)]
+        st = self._synctex([page])
+        band = {"page": 1, "end_page": 1, "top": 100, "bottom": 110,
+                "x": 50, "w": 190}
+        got = st.prose_rects(band, r"Let $R$ be classical, not reading $\VA$")
+        self.assertIsNotNone(got, "a four-word clause is judgeable")
+        self.assertEqual(len(got), 1)
+        self.assertAlmostEqual(got[0]["x"], 132, places=1,
+                               msg="the band starts at `Let`, not at the "
+                                   "theorem head sharing its line")
+        self.assertAlmostEqual(got[0]["x"] + got[0]["w"], 240, places=1)
+
+    def test_maths_between_words_does_not_break_the_alignment(self):
+        page = [(50, 100, 70, 110, "the", 0, 0, 0),
+                (72, 100, 95, 110, "composition", 0, 0, 1),
+                (97, 100, 104, 110, "of", 0, 0, 2),
+                (106, 100, 120, 110, "(W1,", 0, 0, 3),
+                (122, 100, 140, 110, "S1)-local", 0, 0, 4),
+                (142, 100, 160, 110, "map", 0, 0, 5),
+                (162, 100, 168, 110, "is", 0, 0, 6),
+                (170, 100, 200, 110, "(W2)-local.", 0, 0, 7)]
+        st = self._synctex([page])
+        band = {"page": 1, "end_page": 1, "top": 100, "bottom": 110,
+                "x": 50, "w": 150}
+        got = st.prose_rects(
+            band, r"the composition of a $(W_1,S_1)$-local map is local.")
+        self.assertIsNotNone(got)
+        self.assertAlmostEqual(got[0]["x"] + got[0]["w"], 200, places=1,
+                               msg="the closing word is reached through the "
+                                   "formula that precedes it")
+
+    def test_a_clause_with_too_little_prose_keeps_its_line(self):
+        st = self._synctex([[(50, 100, 60, 110, "=", 0, 0, 0)]])
+        band = {"page": 1, "end_page": 1, "top": 100, "bottom": 110,
+                "x": 50, "w": 300}
+        self.assertIsNone(st.prose_rects(band, r"$\sem{c} = f^\sharp$"))
