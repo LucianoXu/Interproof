@@ -79,6 +79,18 @@ def _run(pdf: Path, srcdir: Path, name: str, line: int) -> list[Box]:
     return boxes
 
 
+# Slack when comparing with a floor, so a box that starts exactly where the
+# previous clause ended is not excluded by a rounding difference.
+_EPS = 0.5
+
+_MACRO = re.compile(r"\\[A-Za-z@]+|%.*")
+
+
+def _detex(text: str) -> str:
+    """Enough of the source stripped to leave the words a reader would see."""
+    return _MACRO.sub(" ", text)
+
+
 class SyncTeX:
     """Forward search over one compiled document."""
 
@@ -116,14 +128,84 @@ class SyncTeX:
             return ()
         return tuple(_run(self.pdf, self.srcdir, name, line))
 
-    def start(self, name: str, line: int) -> Box | None:
-        """Topmost box of a source line — where the item begins."""
+    def start(self, name: str, line: int,
+              after: tuple[int, float] | None = None) -> Box | None:
+        """Topmost box of a source line — where the item begins.
+
+        With `after`, boxes at or above that point are left out: they are
+        material the previous clause already accounted for.  If that empties
+        the set the unfiltered one is used, so a floor can never lose an item.
+        """
         boxes = self._at(name, line)
+        if after is not None:
+            below = [b for b in boxes
+                     if (b.page, b.top) > (after[0], after[1] - _EPS)]
+            boxes = below or boxes
         return min(boxes, key=lambda b: (b.page, b.top)) if boxes else None
 
-    def rect(self, name: str, begin: int, end: int, lookahead: int = 4) -> dict | None:
-        """Rectangle spanning the environment at source lines [begin, end]."""
-        top = self.start(name, begin)
+
+    def anchor_rects(self, name: str,
+                     spans: list[tuple[int, int]]) -> list[dict | None]:
+        """Rectangles for the anchors of one statement, in document order.
+
+        `rect` reads an environment, whose first source line is a
+        `\\begin{...}` and therefore unambiguous.  An anchor claims lines in
+        the middle of a paragraph, and there `synctex view` is not exact: the
+        set it answers with holds the clause's own typeset lines *and* strays
+        from the clause before it, because TeX breaks a paragraph while the
+        input pointer already stands on the line that triggered the break.
+        Taking `min` of that set opens the band on the previous clause.
+        Measured on a real definition: the second `\\item` banded from the
+        first, and the third from the second.
+
+        The fix uses the one thing a single clause cannot know and its
+        siblings can — clauses are typeset in the order they are written and
+        do not overlap — so each anchor's top is taken from the boxes below
+        where the previous clause ended.  It is a bound, not a guess, and it
+        cannot invent a placement: an anchor with nothing below the floor
+        keeps the boxes it had.
+
+        What this does *not* recover is a clause whose own last lines were
+        attributed to the next clause's line, which leaves the band short at
+        the bottom.  `verify` is what makes that visible rather than silent.
+        """
+        out: list[dict | None] = []
+        floor: tuple[int, float] | None = None
+        for begin, end in spans:
+            r = self.rect(name, begin, end, after=floor)
+            out.append(r)
+            if r:
+                floor = (r["end_page"], r["bottom"])
+        return out
+
+    def verify(self, rect: dict, want: str) -> bool:
+        """Does the band actually cover the words it claims?
+
+        The band is read back off the page and compared with the source it was
+        derived from — the same check a reader performs by looking.  Words
+        only: the maths comes back in a different alphabet (`\\sigma` against
+        `\u03c3`) and would fail a comparison it has no business failing, so a
+        clause with too little prose to judge is passed rather than guessed at.
+        """
+        words = {w.lower() for w in re.findall(r"[A-Za-z]{4,}", _detex(want))}
+        if len(words) < 4 or not self._text():
+            return True
+        page = self._text()[rect["page"] - 1]
+        got = page.get_text("text", clip=(rect["x"], rect["top"],
+                                          rect["x"] + rect["w"],
+                                          rect["bottom"]))
+        seen = {w.lower() for w in re.findall(r"[A-Za-z]{4,}", got)}
+        return len(words & seen) / len(words) >= 0.34
+
+    def rect(self, name: str, begin: int, end: int, lookahead: int = 4,
+             after: tuple[int, float] | None = None) -> dict | None:
+        """Rectangle spanning the environment at source lines [begin, end].
+
+        `after` is a (page, y) floor for the top edge: boxes at or above it are
+        strays from earlier material, not this block's own.  Only anchors pass
+        it — a statement begins at a `\\begin{...}`, which is never ambiguous.
+        """
+        top = self.start(name, begin, after)
         if top is None:
             return None
 

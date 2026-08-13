@@ -506,6 +506,19 @@ def attach_pdf_rects(cfg: Config, items: dict[str, TexItem], *,
     """
     from .synctex import SyncTeX, have_text_layout
 
+    def source_of(doc, it) -> str:
+        """The lines an item claims, as they stand in the source."""
+        path = doc.root / it.file
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").split("\n")
+        except OSError:
+            return ""
+        return " ".join(lines[it.line - 1:it.end_line])
+
+    # anchors whose band does not cover the words they name; reported, never
+    # silently kept — a wrong band is worse than a coarse one
+    misplaced: list[str] = []
+
     # SyncTeX brackets a block rather than measuring it: its bottom is wherever
     # the *next* paragraph starts.  Reading the typeset page pulls that back to
     # the block's own last line, and without it every band on every item runs
@@ -533,11 +546,24 @@ def attach_pdf_rects(cfg: Config, items: dict[str, TexItem], *,
                 print(f"!! no .synctex.gz beside {d.pdf.name} — is -synctex=1 "
                       f"still in this document's latexmk command?", file=sys.stderr)
             continue
+        # The anchors of one statement are placed together and in document
+        # order: a clause's own boxes cannot be told from a stray without
+        # knowing where the clause before it ended.  See `anchor_rects`.
+        groups: dict[tuple[str, str], list] = {}
         for it in items.values():
-            # anchors are located the same way and by the same call: an anchor
-            # is a range of source lines, which is what `rect` takes
-            if it.doc != d.id or it.kind not in (*cfg.grammar.environments,
-                                                 "anchor"):
+            if it.doc == d.id and it.kind == "anchor" and st.knows(it.file):
+                groups.setdefault((it.file, it.parent), []).append(it)
+        for (file, _parent), group in groups.items():
+            group.sort(key=lambda it: it.line)
+            spans = [(it.line, it.end_line) for it in group]
+            for it, r in zip(group, st.anchor_rects(file, spans)):
+                it.rect = r
+                found += bool(r)
+                if r and not st.verify(r, source_of(d, it)):
+                    misplaced.append(f"{d.id}::{it.label}")
+
+        for it in items.values():
+            if it.doc != d.id or it.kind not in cfg.grammar.environments:
                 continue
             if not st.knows(it.file):
                 continue
@@ -548,6 +574,13 @@ def attach_pdf_rects(cfg: Config, items: dict[str, TexItem], *,
 
         found += attach_spans(cfg, d, items, quiet=quiet)
 
+    if misplaced and not quiet:
+        print(f"!! {len(misplaced)} anchor(s) band text they do not name — "
+              f"synctex could not tell their lines from a neighbour's; give "
+              f"them a quoted anchor to have them measured instead: "
+              + ", ".join(misplaced[:6])
+              + (f", +{len(misplaced) - 6} more" if len(misplaced) > 6 else ""),
+              file=sys.stderr)
     tint_siblings(items)
     return found
 
