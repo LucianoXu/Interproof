@@ -594,6 +594,13 @@ def attach_pdf_rects(cfg: Config, items: dict[str, TexItem], *,
             found += bool(it.rect)
 
         found += attach_spans(cfg, d, items, quiet=quiet)
+        # A quoted anchor is measured by the marked build, which runs after
+        # this and replaces whatever SyncTeX gave it.  Judging its line band
+        # would report a span that is already exact, so the verdict is taken
+        # after the measurement, not before it.
+        misplaced = [key for key in misplaced
+                     if not (items[key].rects
+                             and items[key].rects[0].get("precise"))]
 
     if misplaced and not quiet:
         print(f"!! {len(misplaced)} anchor(s) band text they do not name — "
