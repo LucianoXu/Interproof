@@ -186,6 +186,17 @@ What it costs:
   product of the two. `--no-inline` remains the escape when a page has to stay
   small.
 
+**A module that moves while Lean is reading it keeps its source text.**
+`subverso-extract-mod` reads the file off disk and the pass around it read the
+file earlier, so anything editing in between — a person, another agent — leaves
+an export describing a text that no longer exists. What such an export yields
+is not an error but something worse: an overlay covering the file down to the
+first edited command and nothing after it, which the reader draws as a page
+that loses its colour halfway, and which the cache then keeps. That module is
+skipped for the pass instead, with a note, and elaborated properly by the next
+one — so a formalization under active editing degrades to the tokenizer for the
+module being edited rather than for the page.
+
 **Nothing about the artifact changes.** Elaboration happens on the machine that
 builds, and what it learned is baked into the manifest; the folder that comes
 out still opens with no server, no LaTeX and no Lean. And nothing here can fail

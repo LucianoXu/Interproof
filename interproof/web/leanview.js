@@ -521,7 +521,12 @@ function load(name, text, sem, strs) {
      different way.  Both show up as a pane that answers with the old page. */
   if (!f || f.text !== text || f.sem !== sem) {
     BIND = [];
-    var rich = !!(sem && sem.toks && sem.toks.length);
+    /* `missed` counts commands of the export that are not in this text --
+       the module was edited while Lean was reading it.  Such an overlay
+       covers the file down to the first edit and nothing after it, which
+       renders as a page that loses its colour halfway.  The tokenizer knows
+       the whole file; a partial overlay is worth less than it. */
+    var rich = !!(sem && sem.toks && sem.toks.length && !sem.missed);
     var html = rich ? renderSem(text.split("\n"), sem) : highlight(text, name);
     f = FILES[name] = { text: text, sem: sem, rich: rich, bind: BIND,
                         html: html, lines: text.split("\n").length };

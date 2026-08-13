@@ -460,3 +460,30 @@ class OffByDefaultTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EditedWhileReadingTests(unittest.TestCase):
+    """A module edited while Lean is reading it must not ship a half overlay.
+
+    `subverso-extract-mod` reads the file off disk; the pass around it read the
+    file earlier.  Anything editing in between — a person, another agent —
+    leaves an export describing a text that no longer exists, and `translate`
+    locates what it still can.  What comes out is an overlay with holes, and
+    the reader draws colour only where there are tokens.
+    """
+
+    def test_translate_drops_what_moved_and_says_so(self):
+        text = "\n".join(f"def x{i} := {i}" for i in range(30))
+        mod = fake.module(text, split=3)
+        whole = S.translate(mod, text)
+        self.assertFalse(whole.get("missed"), "the unedited file is complete")
+
+        edited = text.replace("def x5 := 5", "def x5 := 5\ndef inserted := 0")
+        partial = S.translate(mod, edited)
+        self.assertTrue(partial.get("missed"),
+                        "an export of the older text cannot describe this one")
+        self.assertTrue(partial["toks"],
+                        "and it is not empty either, which is the trap: the "
+                        "part before the edit still locates")
+        self.assertLess(len(partial["toks"]), len(whole["toks"]),
+                        "so the overlay covers only part of the file")

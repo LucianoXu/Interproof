@@ -634,6 +634,19 @@ def _closure(files: list[dict]) -> dict[str, list[str]]:
     return out
 
 
+def _on_disk(cfg: Config, name: str) -> str | None:
+    """The module as it stands now, or None if it cannot be read.
+
+    Used to ask whether the file moved while Lean was reading it; unreadable
+    is not an answer, so it is not treated as one.
+    """
+    try:
+        return (cfg.lean_root / name).read_text(encoding="utf-8",
+                                                errors="replace")
+    except OSError:
+        return None
+
+
 def _stamp(cfg: Config, root: Path) -> str:
     """What the extraction depends on besides the module texts.
 
@@ -727,6 +740,30 @@ def extract(cfg: Config, files: list[dict], *,
             ov = translate(raw, f["text"])
         except SubVersoError as e:
             notes.append(f"{mod}: {e}")
+            continue
+        # `subverso-extract-mod` reads the module off disk, and this pass read
+        # it earlier.  Anyone editing in between -- a person, another agent --
+        # leaves an export describing a file that no longer exists: `translate`
+        # locates what it still can and drops the rest, which is an overlay
+        # with holes in it.  The reader draws colour where there are tokens and
+        # plain text where there are none, so the file loses its highlighting
+        # from the first edited command downwards, and the result is *cached*
+        # against the text this pass read, so it survives until the module
+        # changes again.
+        #
+        # Neither half is worth keeping.  A module whose export does not
+        # describe it is skipped for this pass and not written to the cache;
+        # the next pass, once the file stops moving, elaborates it properly.
+        if ov.get("missed"):
+            notes.append(f"{mod}: the export describes an older text "
+                         f"({ov['missed']} command(s) of it are not in the "
+                         f"file) — edited while Lean was reading it; kept as "
+                         f"source text this pass")
+            continue
+        now = _on_disk(cfg, f["name"])
+        if now is not None and now != f["text"]:
+            notes.append(f"{mod}: changed while Lean was reading it; kept as "
+                         f"source text this pass")
             continue
         _store(cache, f["name"], want, ov)
         out[f["name"]] = ov
