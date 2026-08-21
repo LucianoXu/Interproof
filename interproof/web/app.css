@@ -84,11 +84,31 @@ body { overflow: hidden; }
    ========================================================================== */
 
 #app {
+  /* Five columns: the rail, its seam, the paper, the spine, the machine.
+     Each pane's width lives in its own --c-* so a state class can zero one
+     column without touching the fractions the reader dragged the spine to —
+     the split survives a pane being put away and brought back. */
+  --gut: 11px;
+  --rfr: 1fr;
+  --vfr: 1.04fr;
+  --c-rail:  var(--rail);
+  --c-rgut:  var(--gut);
+  --c-recto: minmax(0, var(--rfr));
+  --c-sgut:  var(--gut);
+  --c-verso: minmax(0, var(--vfr));
   display: grid;
-  grid-template-columns: var(--rail) minmax(0, 1fr) minmax(0, 1.04fr);
+  grid-template-columns: var(--c-rail) var(--c-rgut) var(--c-recto) var(--c-sgut) var(--c-verso);
   grid-template-rows: var(--h) minmax(0, 1fr);
   height: 100vh;
 }
+
+/* Placed by name, not by order: a pane that is display:none must not let its
+   neighbours slide into the column it vacated. */
+.rail     { grid-column: 1; grid-row: 2; }
+#raildiv  { grid-column: 2; grid-row: 2; }
+.recto    { grid-column: 3; grid-row: 2; }
+#splitdiv { grid-column: 4; grid-row: 2; }
+.verso    { grid-column: 5; grid-row: 2; }
 
 header {
   grid-column: 1 / -1;
@@ -225,14 +245,104 @@ a.hbtn { text-decoration: none; }
 
 /* The two documents and the marks on them; everything the viewer says *about*
    them put away.  The rail is hidden rather than removed, so `j`/`k` still
-   walk the selection with the index off screen. */
-/* two columns, not a zero-width first one: a hidden grid item stops being
-   placed, and the pages would slide into the column the rail vacated */
-#app.clean { grid-template-columns: minmax(0, 1fr) minmax(0, 1.04fr); }
+   walk the selection with the index off screen.  The seams go too — they are
+   apparatus — but the fractions the spine was dragged to are kept. */
+#app.clean { --c-rail: 0px; --c-rgut: 0px; --c-sgut: 0px; }
 #app.clean .rail,
+#app.clean #raildiv,
+#app.clean #splitdiv,
 #app.clean .rhead,
 #app.clean .vhead { display: none; }
 #app.clean .brand { width: auto; }
+
+/* ==========================================================================
+   the seams — each column can be put away from its own edge
+   ========================================================================== */
+
+.gut {
+  position: relative;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  padding: 0; border: none;
+  min-width: 0;
+}
+.gut svg {
+  width: 10px; height: 16px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.5;
+  stroke-linecap: round; stroke-linejoin: round;
+  transition: transform .15s ease;
+}
+
+/* the index's seam: the whole strip is the button */
+#raildiv {
+  background: var(--paper);
+  border-right: 1px solid var(--rule);
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+#raildiv:hover { background: var(--paper-hi); color: var(--rust); }
+#raildiv:focus-visible { outline: 2px solid var(--rust); outline-offset: -2px; }
+
+/* the spine: dragged to move the split, and carrying the two put-away arrows */
+#splitdiv {
+  background: var(--machine-2);
+  border-right: 1px solid var(--machine-rule);
+  color: var(--machine-dim);
+  cursor: col-resize;
+  touch-action: none;
+  transition: background .12s;
+}
+#splitdiv:hover, #splitdiv.drag { background: var(--machine-3); }
+#splitdiv.drag { box-shadow: inset 2px 0 0 var(--rust); }
+
+.gbtn {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 34px; flex: none;
+  padding: 0; border: none; background: none;
+  color: inherit; cursor: pointer;
+  transition: color .12s;
+}
+.gbtn:hover { color: var(--amber); }
+.gbtn:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+#versobtn svg { transform: scaleX(-1); }
+
+/* the label flies out sideways: these controls sit mid-page, where the header
+   tooltip's below-and-leftward position would cover the pane they are about */
+.gut[data-tip]::after, .gut [data-tip]::after {
+  top: 50%; right: auto; left: calc(100% + 8px);
+  transform: translateY(-50%) translateX(-3px);
+}
+.gut[data-tip]:hover::after, .gut [data-tip]:hover::after,
+.gut[data-tip]:focus-visible::after, .gut [data-tip]:focus-visible::after {
+  transform: translateY(-50%);
+}
+/* with the machine page away the spine stands at the window's right edge,
+   and a label flying right would leave the screen */
+#app.noverso #splitdiv [data-tip]::after { left: auto; right: calc(100% + 8px); }
+
+/* --- a pane put away ----------------------------------------------------
+   One class per pane, and they compose.  The seam stays on screen with its
+   arrow reversed, so the way back is where the pane used to be. */
+#app.norail { --c-rail: 0px; }
+#app.norail .rail { display: none; }
+#app.norail .brand { width: auto; }
+#app.norail #raildiv svg { transform: scaleX(-1); }
+
+/* The page left standing takes a full 1fr of its own, not the fraction the
+   spine was dragged to: a lone track with a flex factor below 1 is given only
+   that share of the free space, and the rest of the row would sit empty. */
+#app.norecto { --c-recto: 0px; --c-verso: minmax(0, 1fr); }
+#app.norecto .recto { display: none; }
+#app.norecto #versobtn { display: none; }
+#app.norecto #rectobtn svg { transform: scaleX(-1); }
+#app.norecto #splitdiv { cursor: default; }
+
+#app.noverso { --c-verso: 0px; --c-recto: minmax(0, 1fr); }
+#app.noverso .verso { display: none; }
+#app.noverso #rectobtn { display: none; }
+#app.noverso #versobtn svg { transform: none; }
+#app.noverso #splitdiv { cursor: default; }
 
 /* ==========================================================================
    rail
@@ -818,7 +928,7 @@ a.hbtn { text-decoration: none; }
 }
 
 @media (max-width: 1180px) {
-  #app { grid-template-columns: 220px minmax(0,1fr) minmax(0,1fr); }
+  :root { --rail: 220px; }
   .pad { padding: 30px 26px 100px; }
 }
 

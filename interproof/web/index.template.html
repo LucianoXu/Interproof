@@ -73,10 +73,32 @@
     <div class="railbody scroll" id="railbody"></div>
   </nav>
 
+  <!-- The index folds from its own edge.  A reader looks for the arrow at the
+       column's boundary, the way Overleaf taught everyone to — not for a
+       button in the header.  The whole strip is the target. -->
+  <button class="gut" id="raildiv" aria-label="Put the index away"
+          data-tip="Put the index away (i)">
+    <svg viewBox="0 0 10 16" aria-hidden="true"><path d="M7 3.5L3 8l4 4.5"/></svg>
+  </button>
+
   <section class="recto">
     <div class="rhead" id="rhead"></div>
     <div class="scroll" id="pdfscroll"><div id="pdfpages"></div></div>
   </section>
+
+  <!-- The spine between the two pages.  Dragged, it moves the split; its two
+       arrows give either page the whole width.  The arrow that would put the
+       last page away is hidden, so the frame can never be emptied. -->
+  <div class="gut" id="splitdiv">
+    <button class="gbtn" id="rectobtn" aria-label="Put the paper away"
+            data-tip="Put the paper away — the Lean page takes the width">
+      <svg viewBox="0 0 10 16" aria-hidden="true"><path d="M7 3.5L3 8l4 4.5"/></svg>
+    </button>
+    <button class="gbtn" id="versobtn" aria-label="Put the Lean page away"
+            data-tip="Put the Lean page away — the paper takes the width">
+      <svg viewBox="0 0 10 16" aria-hidden="true"><path d="M7 3.5L3 8l4 4.5"/></svg>
+    </button>
+  </div>
 
   <section class="verso">
     <div class="vhead" id="vhead"></div>

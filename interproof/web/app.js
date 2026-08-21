@@ -212,7 +212,8 @@ function openPDF(id, items) {
    of it has been mechanized, before any row is picked — the marks are the
    answer to the question a reader arrives with, and `a` puts them away. */
 var state = { mode: "paper", sel: null, q: "", proof: false,
-              all: true, marked: [], clean: false };
+              all: true, marked: [], clean: false,
+              rail: true, recto: true, verso: true, split: null };
 
 var $ = function (s) { return document.querySelector(s); };
 var railBody, rhead, verso, vhead, rscroll, vscroll, noteEl, liveEl;
@@ -669,7 +670,93 @@ function toggleClean(on) {
   state.clean = on === undefined ? !state.clean : on;
   $("#app").classList.toggle("clean", state.clean);
   $("#cleanbtn").classList.toggle("on", state.clean);
+  relayout();
+}
+
+/* ---- the three columns ------------------------------------------------- */
+
+/* the paper re-fits itself to a pane whose width just changed — unless the
+   pane itself is the thing that was put away */
+function relayout() {
+  if (!state.recto) return;
   requestAnimationFrame(function () { PDFView.resize(); });
+}
+
+/* Each column folds from its own seam: the index behind the arrow on its
+   edge, either page from the spine between them.  The arrow that would put
+   the last page away is hidden by the state class, and putting one page away
+   brings the other back if it was gone — the frame can never be emptied. */
+function toggleRail(on) {
+  state.rail = on === undefined ? !state.rail : on;
+  $("#app").classList.toggle("norail", !state.rail);
+  var b = $("#raildiv"),
+      tip = state.rail ? "Put the index away (i)" : "Bring the index back (i)";
+  b.dataset.tip = tip; b.setAttribute("aria-label", tip);
+  relayout();
+}
+
+function toggleRecto(on) {
+  state.recto = on === undefined ? !state.recto : on;
+  if (!state.recto && !state.verso) toggleVerso(true);
+  $("#app").classList.toggle("norecto", !state.recto);
+  var b = $("#rectobtn"),
+      tip = state.recto ? "Put the paper away — the Lean page takes the width"
+                        : "Bring the paper back";
+  b.dataset.tip = tip; b.setAttribute("aria-label", tip);
+  relayout();
+}
+
+function toggleVerso(on) {
+  state.verso = on === undefined ? !state.verso : on;
+  if (!state.verso && !state.recto) toggleRecto(true);
+  $("#app").classList.toggle("noverso", !state.verso);
+  var b = $("#versobtn"),
+      tip = state.verso ? "Put the Lean page away — the paper takes the width"
+                        : "Bring the Lean page back";
+  b.dataset.tip = tip; b.setAttribute("aria-label", tip);
+  relayout();
+}
+
+/* where the spine stands, as the paper's share of what the two pages divide.
+   Held between .2 and .8: a page squeezed to a sliver reads as gone, and
+   "gone" is the arrows' job, which knows the way back. */
+function setSplit(t) {
+  state.split = Math.min(0.8, Math.max(0.2, t));
+  $("#app").style.setProperty("--rfr", state.split.toFixed(4) + "fr");
+  $("#app").style.setProperty("--vfr", (1 - state.split).toFixed(4) + "fr");
+}
+
+/* Dragging the spine.  The pointer is captured, so the drag survives crossing
+   the PDF's canvases; the paper re-fits when the drag pauses and once more
+   when it ends, not on every moved pixel — a page is re-rendered per scale. */
+function wireSplit() {
+  var div = $("#splitdiv"), settle = null;
+  div.addEventListener("pointerdown", function (e) {
+    if (e.target.closest(".gbtn") || !state.recto || !state.verso) return;
+    e.preventDefault();
+    div.setPointerCapture(e.pointerId);
+    div.classList.add("drag");
+    var box = div.getBoundingClientRect();
+    var grip = e.clientX - (box.left + box.width / 2);   // where on the spine it was taken
+    var x0 = $(".recto").getBoundingClientRect().left;
+    var x1 = $(".verso").getBoundingClientRect().right;
+    var move = function (ev) {
+      setSplit((ev.clientX - grip - x0 - box.width / 2) / (x1 - x0 - box.width));
+      clearTimeout(settle);
+      settle = setTimeout(function () { PDFView.resize(); }, 120);
+    };
+    var up = function () {
+      div.classList.remove("drag");
+      div.removeEventListener("pointermove", move);
+      div.removeEventListener("pointerup", up);
+      div.removeEventListener("pointercancel", up);
+      clearTimeout(settle);
+      PDFView.resize();
+    };
+    div.addEventListener("pointermove", move);
+    div.addEventListener("pointerup", up);
+    div.addEventListener("pointercancel", up);
+  });
 }
 
 /* ---- reference rows ---------------------------------------------------- */
@@ -1238,6 +1325,8 @@ function stamped() {
 function snapshot() {
   return { mode: state.mode, sel: state.sel, q: state.q, all: state.all,
            clean: state.clean, proof: state.proof,
+           rail: state.rail, recto: state.recto, verso: state.verso,
+           split: state.split,
            pdf: rscroll ? rscroll.scrollTop : 0, lean: vscroll ? vscroll.scrollTop : 0,
            scale: PDFView.scale(), fit: PDFView.fitting() };
 }
@@ -1250,6 +1339,10 @@ function restore(s) {
   state.mode = s.mode;
   if (state.all !== s.all) toggleAll(s.all);
   if (state.clean !== s.clean) toggleClean(s.clean);
+  if (state.rail !== s.rail) toggleRail(s.rail);
+  if (state.recto !== s.recto) toggleRecto(s.recto);
+  if (state.verso !== s.verso) toggleVerso(s.verso);
+  if (s.split != null && s.split !== state.split) setSplit(s.split);
 
   var key = s.sel, lost = "";
   if (modeOf(key) !== state.mode) {
@@ -1491,6 +1584,10 @@ function helpHTML() {
        "<b>document or module row</b>, which opens that file whole.</li>" +
        "<li>The <b>triangle</b> on a document or module row folds it instead " +
        "of opening it.</li>" +
+       "<li>The <b>arrow on the index's edge</b> folds the whole index away " +
+       "and brings it back. The <b>dark spine between the two pages</b> drags " +
+       "to move their split, and its arrows give either page the whole " +
+       "width.</li>" +
        "<li>Every <b>name in a box</b> in the two bars above the pages: they " +
        "are the references, and each one goes there.</li>" +
        "<li>A <b>citation inside the Lean source</b> — the underlined labels " +
@@ -1509,6 +1606,7 @@ function helpHTML() {
   h += "<h3>keys</h3><table class='hkeys'>" +
        row("a", "<b>Formalized</b>: every statement with a counterpart, marked at once — on by default. <code>a</code> puts the marks away; a put-away mark still lights under the pointer") +
        row("c", "<b>Clean</b>: put the apparatus away, leaving the two documents") +
+       row("i", "fold the index away, or bring it back — the arrow on its edge does the same") +
        row("?", "this page") +
        row("esc", "close this, or leave Clean") +
        "</table>";
@@ -1615,6 +1713,10 @@ function boot() {
 
   $("#cleanbtn").onclick = function () { toggleClean(); };
   $("#allbtn").onclick = function () { toggleAll(); };
+  $("#raildiv").onclick = function () { toggleRail(); };
+  $("#rectobtn").onclick = function () { toggleRecto(); };
+  $("#versobtn").onclick = function () { toggleVerso(); };
+  wireSplit();
   $("#helpbtn").onclick = function () { toggleHelp(); };
   $("#help").onclick = function (e) { if (e.target === $("#help")) toggleHelp(false); };
   // a new filter is a new tree, and it starts unfolded: what the reader folded
@@ -1630,6 +1732,7 @@ function boot() {
     if (e.key === "?") toggleHelp();
     else if (e.key === "a") toggleAll();
     else if (e.key === "c") toggleClean();
+    else if (e.key === "i") toggleRail();
     // one escape, one thing put away: the sheet is on top, so it goes first
     else if (e.key === "Escape") {
       if (!$("#help").hidden) toggleHelp(false); else toggleClean(false);
