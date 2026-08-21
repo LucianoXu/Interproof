@@ -34,6 +34,14 @@ around them is free:
 /-- Formalizes def:cq-semantics of the note. -/
 ```
 
+Backticks are punctuation too, and the third line above shows it: `` `note,
+def:proc-decl` `` and `note, def:proc-decl` are the same citation to the build
+and the same chip in the reader. Nothing here reads them, which is exactly why
+they are worth spending on something else — in a Lean docstring backticks mark
+code, and the convention this repository follows is to leave them for that
+(`Store.update`, `Var`) and to write citations bare. A statement in a paper is
+not code.
+
 A label is recognised by its prefix (`thm:`, `lem:`, `def:`, …). Which prefixes
 exist is `[grammar] label_prefixes` in `interproof.toml` — a project that
 writes `t:foo` says so there.
@@ -90,6 +98,14 @@ citation attributed to a particular document, put the name in the same clause.
 With no marker in range, the first document in configuration order wins. That
 is a guess, and the only place in this pipeline that guesses — if it matters to
 you, write the marker.
+
+**Write the marker against the label** — `paper:def:state`, `note, def:state`.
+Both the build and the reader read that form, and the reader makes the document
+part of the chip, so the whole citation is one thing to click. A marker further
+away is read by the build alone: `See def:state in the note` resolves correctly
+in the manifest, but the page has only the bare label to linkify and no hint to
+resolve it with, so on a label two documents hold the chip can open the other
+one. Same clause is enough for the build; same breath is what the reader wants.
 
 Two things worth knowing about the default:
 

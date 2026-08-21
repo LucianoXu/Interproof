@@ -7,9 +7,14 @@ paper's — the paper takes stores for granted and the note is where they are
 actually pinned down.
 
 Both documents introduce the same object under the same label, so the two
-citations here are the demo's disambiguation case: `paper:def:state` is the
-paper's, `note, def:state` is the note's, and only the marker in front of each
+citations here are the demo's disambiguation case: paper:def:state is the
+paper's, note, def:state is the note's, and only the marker in front of each
 tells them apart.  See `markers` in `interproof.toml`.
+
+Neither is written in backticks, and no citation in this development is.  The
+backticks in a docstring are Lean's code formatting — `Store.update`, `Var` —
+and a citation names a statement in a paper, which is not code.  Nothing reads
+them either way: a citation in backticks links exactly as one without.
 
 Alphabetically this module is fourth of five; in import order it is first.
 That is the whole argument for reading the file index in import order.
@@ -23,8 +28,8 @@ abbrev Var := String
 
 /-- A store: a total map from variables to natural numbers.
 
-Totality is the paper's convenience and the note's (`paper:def:state`,
-`note, def:state`): with no partial stores there is no uninitialised-variable
+Totality is the paper's convenience and the note's — paper:def:state and
+note, def:state — so with no partial stores there is no uninitialised-variable
 case anywhere below. -/
 abbrev Store := Var → Nat
 
@@ -57,7 +62,7 @@ The parser asks the comment spans rather than the line text; this block is the
 regression case for that.
 -/
 
-/-- The second write wins: `note, lem:update-shadow`.
+/-- The second write wins: note, lem:update-shadow.
 
 The `@[simp]` below is deliberate.  An attribute between a docstring and its
 declaration must not detach the two. -/
@@ -69,7 +74,7 @@ theorem update_shadow (s : Store) (x : Var) (m n : Nat) :
   · simp [Store.update, h]
   · simp [Store.update, h]
 
-/-- Writes to distinct variables commute: `note, lem:update-comm`. -/
+/-- Writes to distinct variables commute: note, lem:update-comm. -/
 theorem update_comm (s : Store) {x y : Var} (h : x ≠ y) (m n : Nat) :
     Store.update (Store.update s x m) y n
       = Store.update (Store.update s y n) x m := by
@@ -97,7 +102,7 @@ no ceremony. -/
 def AgreeOn (W : List Var) (s t : Store) : Prop :=
   ∀ x ∈ W, s x = t x
 
-/-- Writing outside a frame leaves the frame alone: `note, lem:frame-update`. -/
+/-- Writing outside a frame leaves the frame alone: note, lem:frame-update. -/
 theorem agreeOn_update_of_not_mem {W : List Var} {x : Var} (s : Store) (n : Nat)
     (hx : x ∉ W) : AgreeOn W s (Store.update s x n) := by
   intro y hy
