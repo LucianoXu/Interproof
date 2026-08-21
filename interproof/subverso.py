@@ -791,7 +791,8 @@ def _build_package(lake: str, root: Path) -> list[str]:
     more detail than this can.
     """
     proc = subprocess.run([lake, "build"], cwd=root,
-                          capture_output=True, text=True)
+                          capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL)
     if proc.returncode == 0:
         return []
     return ["`lake build` failed in " + str(root) + ", so modules that import "
@@ -830,8 +831,11 @@ def _run(lake: str, root: Path, mod: str, cache: Path) -> dict:
     """One module through `lake exe subverso-extract-mod`."""
     dest = cache / "_raw.json"
     dest.unlink(missing_ok=True)
+    # stdin closed on both lake calls: a first run can hand the terminal to
+    # elan, whose toolchain prompt under `serve` would hang the build forever
     proc = subprocess.run([lake, "exe", EXE, mod, str(dest)],
-                          cwd=root, capture_output=True, text=True)
+                          cwd=root, capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL)
     err = (proc.stderr or "") + (proc.stdout or "")
     if proc.returncode != 0 and not dest.is_file():
         if "unknown executable" in err or "unknown target" in err:

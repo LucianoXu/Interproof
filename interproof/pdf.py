@@ -55,7 +55,12 @@ def compile_docs(cfg: Config, *, docs: list[Document] | None = None,
                "-outdir=" + os.path.relpath(d.build_dir, d.root), d.main]
         # bytes, not text: a first run echoes the .log, which carries whatever
         # 8-bit bytes the fonts and packages put there and is not valid UTF-8
-        r = subprocess.run(cmd, cwd=d.root, env=env, capture_output=True)
+        # stdin closed: TeX answers a missing file with a *prompt*, and under
+        # `serve` that prompt would read from whatever terminal the server was
+        # left running on — a build hung forever, with the watcher inside it.
+        # EOF turns it into the failed run it already was.
+        r = subprocess.run(cmd, cwd=d.root, env=env, capture_output=True,
+                           stdin=subprocess.DEVNULL)
         out = r.stdout.decode("utf-8", "replace")
         if r.returncode != 0 or not d.pdf.exists():
             raise PdfBuildError(

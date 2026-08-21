@@ -274,6 +274,12 @@ class _Live:
                 continue
             self._settle(cfg, manifest, errors, t0, "lean+")
 
+    def fail(self, msg: str) -> None:
+        """A failure with no rebuild attached — the watcher hitting something
+        it could not classify — reported through the same channel as a failed
+        build, because the page's lamp has no other way to learn of it."""
+        self._settle(None, None, [msg], time.monotonic(), "watch")
+
     def _settle(self, cfg: Config | None, manifest: dict | None,
                 errors: list[str], t0: float, kind: str) -> None:
         full = "\n".join(errors)
@@ -298,14 +304,21 @@ class _Live:
         # Flushed, because this line is the session's only feedback and a
         # server whose output is piped to a log would otherwise hold it until
         # the buffer fills — which is to say, until it no longer matters.
-        if state["ok"]:
-            print(f"[{stamp}] {kind:6s} rebuilt   gen {state['gen']}"
-                  f"   {took:.2f}s", flush=True)
-        else:
-            print(f"[{stamp}] {kind:6s} FAILED"
-                  f"{'  (serving the previous build)' if self._served() else ''}"
-                  f"   {took:.2f}s", file=sys.stderr)
-            print(_indent(full), file=sys.stderr)
+        # Guarded, because the terminal is allowed to be gone: a serve left
+        # running past its shell writes to a broken pipe, and a print that
+        # raised here would take the watcher down and hold the publish below
+        # back from the one reader that is certainly still looking.
+        try:
+            if state["ok"]:
+                print(f"[{stamp}] {kind:6s} rebuilt   gen {state['gen']}"
+                      f"   {took:.2f}s", flush=True)
+            else:
+                print(f"[{stamp}] {kind:6s} FAILED"
+                      f"{'  (serving the previous build)' if self._served() else ''}"
+                      f"   {took:.2f}s", file=sys.stderr)
+                print(_indent(full), file=sys.stderr)
+        except OSError:
+            pass
         # Published on failure too: the page has no other way to learn that
         # what it is showing is not what is on disk.
         self._publish(state)
@@ -460,39 +473,51 @@ def _read_sources(manifest: dict | None) -> list[str]:
 
 
 def _watch(live: _Live, stop: threading.Event) -> None:
+    # The guard around the loop body is the watcher's one hard obligation.
+    # This thread is the only thing that keeps a served page true, and it is a
+    # daemon: an exception here would end it in silence, with the HTTP side
+    # still answering, the lamp still lit, and every edit thereafter ignored —
+    # which was let stand for eight days once, and read as real dangling
+    # references.  So a failed pass is reported where a failed build is
+    # reported, and watching goes on; the pause keeps a persistent failure
+    # from restating itself twice a second.
     stamps, _ = _scan(live.cfg, _read_sources(live.manifest))
     while not stop.wait(POLL):
-        cfg, extra = live.cfg, _read_sources(live.manifest)
-        fresh, owners = _scan(cfg, extra)
-        changed = _diff(stamps, fresh)
-        if not changed:
-            stamps = fresh
-            continue
+        try:
+            cfg, extra = live.cfg, _read_sources(live.manifest)
+            fresh, owners = _scan(cfg, extra)
+            changed = _diff(stamps, fresh)
+            if not changed:
+                stamps = fresh
+                continue
 
-        # Settle first.  A save is often a truncate, a write and a rename, and
-        # rebuilding on the truncate means compiling an empty file and showing
-        # the reader an error that was never true.
-        while not stop.wait(DEBOUNCE):
-            newer, owners = _scan(cfg, extra)
-            again = _diff(fresh, newer)
-            fresh = newer
-            changed |= again
-            if not again:
-                break
-        if stop.is_set():
-            return
+            # Settle first.  A save is often a truncate, a write and a rename,
+            # and rebuilding on the truncate means compiling an empty file and
+            # showing the reader an error that was never true.
+            while not stop.wait(DEBOUNCE):
+                newer, owners = _scan(cfg, extra)
+                again = _diff(fresh, newer)
+                fresh = newer
+                changed |= again
+                if not again:
+                    break
+            if stop.is_set():
+                return
 
-        config_changed, lean, docs = _classify(cfg, changed, owners)
-        if config_changed:
-            live.rebuild(reload_config=True)
-        elif docs:
-            live.rebuild(doc_ids=docs, compile_tex=True)
-        elif lean:
-            live.rebuild(compile_tex=False)
-        # Re-scanned after the build, not before: the build writes into the
-        # source tree (a `.bbl`, a regenerated `.cls`) often enough that
-        # carrying the pre-build stamps forward would rebuild a second time.
-        stamps, _ = _scan(live.cfg, _read_sources(live.manifest))
+            config_changed, lean, docs = _classify(cfg, changed, owners)
+            if config_changed:
+                live.rebuild(reload_config=True)
+            elif docs:
+                live.rebuild(doc_ids=docs, compile_tex=True)
+            elif lean:
+                live.rebuild(compile_tex=False)
+            # Re-scanned after the build, not before: the build writes into
+            # the source tree (a `.bbl`, a regenerated `.cls`) often enough
+            # that carrying the pre-build stamps forward would rebuild twice.
+            stamps, _ = _scan(live.cfg, _read_sources(live.manifest))
+        except Exception as e:                            # noqa: BLE001
+            live.fail(_describe(e))
+            stop.wait(5.0)
 
 
 def _classify(cfg: Config, changed: set[str],

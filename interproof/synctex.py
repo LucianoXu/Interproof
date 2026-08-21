@@ -66,7 +66,7 @@ class Box:
 def _run(pdf: Path, srcdir: Path, name: str, line: int) -> list[Box]:
     out = subprocess.run(
         ["synctex", "view", "-i", f"{line}:1:{name}", "-o", str(pdf), "-d", str(srcdir)],
-        capture_output=True, text=True).stdout
+        capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
     boxes = []
     for blk in out.split("Page:")[1:]:
         page = int(blk.split("\n", 1)[0])

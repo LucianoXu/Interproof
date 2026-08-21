@@ -206,7 +206,10 @@ def _compile(doc: Document, mirror_root: Path, main_rel: str) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, **doc.env}
     cmd = [*doc.latexmk, "-outdir=" + os.path.relpath(outdir, mirror_root), main_rel]
-    r = subprocess.run(cmd, cwd=mirror_root, env=env, capture_output=True)
+    # stdin closed for the same reason as the main compile: a TeX prompt read
+    # from a live terminal is a build hung forever, not a failed one
+    r = subprocess.run(cmd, cwd=mirror_root, env=env, capture_output=True,
+                       stdin=subprocess.DEVNULL)
     aux = outdir / (Path(main_rel).stem + ".aux")
     if not aux.exists():
         raise SaveposError(
