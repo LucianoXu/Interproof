@@ -555,6 +555,94 @@ class EmptyCorrespondenceTests(unittest.TestCase):
             self.assertNotIn("CITING", hint, "this is the wrong diagnosis here")
 
 
+class LabelCollisionTests(unittest.TestCase):
+    """Two items, one key.
+
+    An `% @interproof anchor def:x` written beside `\\label{def:x}` used to
+    replace the statement, because a file's anchors are built after its
+    environments and the last write won.  Nothing looked broken — the band was
+    still drawn and `interproof check` still said ok — while the statement had
+    stopped being one: gone from the coverage total, and gone from the index,
+    which draws an anchor under a parent that `def:x` peels to (`def`) and no
+    document holds.
+    """
+
+    def project(self, tmp: str, files: dict[str, str]) -> Path:
+        root = Path(tmp)
+        (root / "paper").mkdir()
+        (root / "Formal").mkdir()
+        for name, body in files.items():
+            (root / "paper" / name).write_text(
+                "\\documentclass{article}\n\\usepackage{amsthm}\n"
+                "\\newtheorem{definition}{Definition}\n\\begin{document}\n"
+                + body + "\\end{document}\n")
+        (root / "Formal" / "A.lean").write_text(
+            "/-- The game: def:x. -/\ndef game : Nat := 0\n")
+        p = root / "interproof.toml"
+        p.write_text('[project]\ntitle = "T"\n\n[[document]]\nid = "paper"\n'
+                     'root = "paper"\nfiles = %s\n\n[formal]\nroot = "Formal"\n'
+                     % ("[" + ", ".join(f'"{n}"' for n in files) + "]"))
+        return p
+
+    STATEMENT = (
+        "% @interproof anchor def:x\n"
+        "\\begin{definition}[The game]\\label{def:x}\n"
+        "  The game runs as follows.\n"
+        "  \\begin{enumerate}\n"
+        "    % @interproof anchor def:x:setup\n"
+        "    \\item Setup: the challenger draws a key.\n"
+        "    % @interproof anchor def:x:guess\n"
+        "    \\item Guess: the adversary outputs a bit.\n"
+        "  \\end{enumerate}\n"
+        "\\end{definition}\n")
+
+    def test_an_anchor_never_replaces_the_statement_it_names(self):
+        from interproof import tex as T
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = C.load(self.project(tmp, {"main.tex": self.STATEMENT}))
+            items, notes = T.parse_all(cfg)
+            it = items["paper::def:x"]
+            self.assertEqual(it.kind, "definition", "the \\label is what makes "
+                             "a statement; an anchor of the same name is a part")
+            # the statement's own extent, not the directive's line
+            self.assertLess(it.line, it.end_line)
+            # and the parts still hang off it, which is what they are parts of
+            for part in ("paper::def:x:setup", "paper::def:x:guess"):
+                self.assertEqual(items[part].kind, "anchor")
+                self.assertEqual(f"paper::{items[part].parent}", "paper::def:x")
+            self.assertIn("paper::def:x", items)
+            self.assertTrue(notes, "the dropped directive must be reported")
+            self.assertIn("def:x", notes[0])
+
+    def test_the_statement_survives_a_directive_in_another_file(self):
+        """Write order is not an argument. The anchor is read first here, and
+        the statement still wins."""
+        from interproof import tex as T
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = C.load(self.project(tmp, {
+                "main.tex": "% @interproof anchor def:x\nA line to claim.\n",
+                "later.tex": self.STATEMENT}))
+            items, notes = T.parse_all(cfg)
+            self.assertEqual(items["paper::def:x"].kind, "definition")
+            self.assertEqual(items["paper::def:x"].file, "later.tex")
+            self.assertTrue(notes)
+
+    def test_the_statement_is_still_a_statement_to_check(self):
+        """The symptom that hid this: coverage counted what was left."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = C.load(self.project(tmp, {"main.tex": self.STATEMENT}))
+            man = M.build(cfg, quiet=True)
+            kinds = {k: v["kind"] for k, v in man["tex"].items()}
+            self.assertEqual(kinds["paper::def:x"], "definition")
+            statements = [k for k, v in kinds.items()
+                          if v in cfg.grammar.environments]
+            self.assertIn("paper::def:x", statements,
+                          "an item lost to an anchor is lost to the gap count")
+            self.assertEqual(man["unresolved"], [])
+
+
 @unittest.skipUnless(HAVE_LATEX, "needs latexmk")
 class BuildTests(unittest.TestCase):
     """`interproof build` produces a folder that stands on its own."""

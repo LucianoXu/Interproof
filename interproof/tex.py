@@ -325,27 +325,88 @@ def _anchors(directives: list[tuple[int, str, str]], items: list[TexItem],
     return out
 
 
-def parse_document(doc: Document, grammar: Grammar,
-                   start_order: int = 0) -> tuple[dict[str, TexItem], int]:
-    """Every labelled item of one document, keyed `<doc id>::<label>`."""
+def parse_document(doc: Document, grammar: Grammar, start_order: int = 0
+                   ) -> tuple[dict[str, TexItem], int, list[str]]:
+    """Every labelled item of one document, keyed `<doc id>::<label>`, together
+    with what the keying had to settle.
+
+    Two items can want the same key, and a dictionary holds one.  The case that
+    matters is an `% @interproof anchor def:foo` written beside
+    `\\label{def:foo}` — the same name for a statement and for a part of it —
+    and it used to be settled by write order: a file's anchors are built after
+    its environments, so the anchor replaced the statement and said nothing.
+
+    What that loses is not the band, which is why nothing looks broken: the
+    rectangle is still drawn, coverage still rolls up from the anchor's own
+    children, and `interproof check` still reports ok.  What it loses is the
+    *statement*.  It stops counting as one, so it leaves the coverage total and
+    the gap list; and the index cannot render it either, because an item of
+    kind `anchor` is drawn under its parent, and the parent of a
+    statement-level path is the bare prefix — `def:foo` peels to `def`, which
+    no document holds.  A whole section can go missing from the tree this way.
+
+    So a `\\label{}` is never replaced by an anchor of the same name: the label
+    is what makes a statement, and an anchor names a part of one.  The dropped
+    directive is reported rather than swallowed, because the whole reason this
+    was expensive to find is that nothing said a word.
+    """
     items: dict[str, TexItem] = {}
+    shadowed: list[str] = []                        # anchors dropped for a label
+    doubled: list[str] = []                         # anything else that collided
     order = start_order
     for f in doc.source_files():
         rel = str(f.relative_to(doc.root))          # what synctex indexes it as
         got = parse_file(f, doc.id, rel, order, grammar)
         order = got[-1].order if got else order
         for it in got:
-            items[f"{doc.id}::{it.label}"] = it
-    return items, order
+            key = f"{doc.id}::{it.label}"
+            prev = items.get(key)
+            if prev is None:
+                items[key] = it
+                continue
+            if (prev.file, prev.line, prev.kind) == (it.file, it.line, it.kind):
+                continue                            # the same file read twice
+            if (prev.kind == "anchor") != (it.kind == "anchor"):
+                keep, drop = ((prev, it) if it.kind == "anchor" else (it, prev))
+                items[key] = keep
+                shadowed.append(f"{it.label} ({drop.file}:{drop.line})")
+                continue
+            # two labels, or two directives: nothing here can tell which was
+            # meant, and LaTeX itself resolves a repeated \label to the last
+            # one, so that is kept — and said out loud
+            doubled.append(f"{it.label} ({prev.file}:{prev.line}, "
+                           f"{it.file}:{it.line})")
+            items[key] = it
+    return items, order, _collisions(doc.id, shadowed, doubled)
 
 
-def parse_all(cfg: Config) -> dict[str, TexItem]:
+def _collisions(doc: str, shadowed: list[str], doubled: list[str]) -> list[str]:
+    """One line per kind of collision, however many there were of it."""
+    def some(names: list[str]) -> str:
+        return ", ".join(names[:4]) + (f", +{len(names) - 4} more"
+                                       if len(names) > 4 else "")
+
+    out = []
+    if shadowed:
+        out.append(f"{doc}: {len(shadowed)} anchor directive(s) name a "
+                   f"statement's own \\label and were dropped — a \\label is "
+                   f"what makes a statement, an anchor names a *part* of one, "
+                   f"and the directive is redundant beside it: " + some(shadowed))
+    if doubled:
+        out.append(f"{doc}: {len(doubled)} label(s) are used twice; the last "
+                   f"of each is the one the manifest holds: " + some(doubled))
+    return out
+
+
+def parse_all(cfg: Config) -> tuple[dict[str, TexItem], list[str]]:
     items: dict[str, TexItem] = {}
+    notes: list[str] = []
     order = 0
     for d in cfg.documents:
-        got, order = parse_document(d, cfg.grammar, order)
+        got, order, said = parse_document(d, cfg.grammar, order)
         items.update(got)
-    return items
+        notes.extend(said)
+    return items, notes
 
 
 def attach_cited_by(items: dict[str, TexItem], docs: list[Document]) -> int:

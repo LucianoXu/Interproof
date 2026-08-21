@@ -106,6 +106,19 @@ Ordinal addressing — *"the 2nd `\item`"*, *"premise 3"* — is **rejected**. I
 re-points silently when an author inserts a condition, which is the same
 failure mode that removed citation by title.
 
+**A directive never names a statement's own `\label`.** `\label{def:wf}` is
+what makes `def:wf` a statement; `% @interproof anchor def:wf` beside it says
+nothing the label had not already said, and the two want the same key. Written
+anyway, the directive is dropped in favour of the label and the build says so.
+It used to be the other way round, silently — the anchor was built after the
+environments of its file and simply replaced the statement — and the damage was
+invisible in exactly the places one looks: the band was still drawn, coverage
+still rolled up from the anchor's children, and `interproof check` still said
+ok. What went was the *statement*: out of the coverage total, out of the gap
+list, and out of the index, which draws an anchor under its parent — and the
+parent of a statement-level path is the bare prefix `def`, which no document
+holds. On the pair this was found in, a whole section left the tree that way.
+
 ### Where the marked text lands in the PDF
 
 This is the hard half, and it was settled by measurement rather than argument.

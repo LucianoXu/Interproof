@@ -56,11 +56,11 @@ def build(cfg: Config, *, with_sources: bool = True, quiet: bool = False,
     """
     say = (lambda *a: None) if quiet else (lambda *a: print(*a))
 
-    tex_items = parse_tex_all(cfg)
+    tex_items, tex_notes = parse_tex_all(cfg)
     labels = {d.id: {it.label for it in tex_items.values() if it.doc == d.id}
               for d in cfg.documents}
 
-    for line in configuration_warnings(cfg, tex_items, labels):
+    for line in tex_notes + configuration_warnings(cfg, tex_items, labels):
         say("!! " + line)
 
     located = attach_pdf_rects(cfg, tex_items, quiet=quiet)
