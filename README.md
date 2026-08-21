@@ -143,10 +143,11 @@ and it is the only one:
 theorem step_one_sided : … := …
 ```
 
-- **Where it sits is what it claims.** In the docstring above a declaration,
-  the citation belongs to that declaration and the band covers prose and code
-  together; in `/-! … -/` module prose it belongs to the comment block that
-  cites, never to a region spanning two distant mentions.
+- **Where it sits is what it claims.** In the comment above a declaration — a
+  `/-- … -/` docstring or a `-- …` note — the citation belongs to that
+  declaration and the band covers prose and code together; in `/-! … -/` module
+  prose it belongs to the comment block that cites, never to a region spanning
+  two distant mentions.
 - **Two documents holding the same label** — a paper and a note both with
   `def:state` — are told apart by naming the document in the same clause:
   `note, def:state`. A label only one document holds needs no ceremony.

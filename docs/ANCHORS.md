@@ -41,7 +41,7 @@ exists, using it beats quoting the text around it:
   matters because Lean sources churn hard during an active formalization;
 - a name cannot match the wrong occurrence;
 - and it needs **no new syntax at all**. Members are read off the source, and
-  the existing rule — *a citation in the docstring above X belongs to X* —
+  the existing rule — *a citation in the comment above X belongs to X* —
   takes it from there.
 
 ```lean

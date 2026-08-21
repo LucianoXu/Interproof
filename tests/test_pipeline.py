@@ -130,6 +130,116 @@ class ManifestTests(unittest.TestCase):
             _, _, refs = parse_file(p, "M", cites)
         self.assertEqual([r["label"] for r in refs], ["def:frame"])
 
+    def _parsed(self, source: str):
+        """One module, parsed the way the build parses it."""
+        from interproof.lean import Citations, parse_file
+
+        cites = Citations.of(self.cfg)
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "M.lean"
+            p.write_text(source, encoding="utf-8")
+            decls, _, refs = parse_file(p, "M", cites)
+        # a sentence's closing dot is still on the label here — whether it is
+        # punctuation or a path segment is settled at resolution, against the
+        # documents — so it comes off before these tests key on the label
+        return ({d.name: d for d in decls},
+                {r["label"].rstrip("."): r for r in refs})
+
+    def test_a_line_comment_introduces_the_declaration_below_it(self):
+        """`-- ...` above a declaration is a comment about *that* declaration.
+
+        It used to fall inside the span of the declaration *above* it, which
+        got the citation wrong in both directions at once: the claim was
+        attributed to a declaration that had not made it, and the declaration
+        that had made it was left uncited.
+        """
+        decls, refs = self._parsed(
+            "/-- Alpha. -/\n"
+            "def alpha : Nat := 0\n"
+            "\n"
+            "-- Beta is the note's update:\n"
+            "-- def:update.\n"
+            "def beta : Nat := 0\n")
+        self.assertEqual(refs["def:update"]["decl"], "beta")
+        self.assertTrue(refs["def:update"]["corr"], "the comment above a "
+                        "declaration claims a correspondence, as a docstring does")
+        # the whole run of `--` lines is the comment, so the band covers it
+        self.assertEqual(decls["beta"].doc_line, 4)
+        self.assertEqual(decls["alpha"].end_line, 2, "alpha must not run on "
+                         "into the comment introducing beta")
+        # only the extent is taken from a line comment: its text is not a
+        # docstring, and the reader shows a docstring as one
+        self.assertEqual(decls["beta"].doc, "")
+
+    def test_module_prose_between_declarations_belongs_to_neither(self):
+        """`/-! ... -/` owns nothing, heading or no heading.
+
+        A `/-! ## ... -/` section header was already a boundary; a block
+        without one was not, so plain module prose sat inside the span of the
+        declaration above it and its citations were read as that declaration's
+        correspondences.
+        """
+        decls, refs = self._parsed(
+            "/-- Alpha. -/\n"
+            "def alpha : Nat := 0\n"
+            "\n"
+            "/-!\n"
+            "Everything below rests on def:update.\n"
+            "-/\n"
+            "\n"
+            "/-- Beta. -/\n"
+            "def beta : Nat := 0\n")
+        self.assertIsNone(refs["def:update"]["decl"], "module prose owns nothing")
+        self.assertFalse(refs["def:update"]["corr"])
+        # and its extent is the block that did the citing, not a declaration
+        self.assertEqual((refs["def:update"]["block_from"],
+                          refs["def:update"]["block_to"]), (4, 6))
+        self.assertEqual(decls["alpha"].end_line, 2)
+
+    def test_a_comment_inside_a_declaration_stays_inside_it(self):
+        """The rule is column zero, and this is what it protects.
+
+        An indented `-- ...` is on a tactic and an indented `/-- ... -/`
+        introduces a constructor.  Breaking on either would end a declaration
+        in the middle of its own body — and lose every constructor below it.
+        """
+        decls, refs = self._parsed(
+            "/-- Cmd: def:cmd. -/\n"
+            "inductive Cmd where\n"
+            "  /-- def:cmd:skip -/\n"
+            "  | skip : Cmd\n"
+            "  /-- def:cmd:seq -/\n"
+            "  | seq : Cmd → Cmd → Cmd\n"
+            "\n"
+            "/-- Alpha. -/\n"
+            "theorem alpha : True := by\n"
+            "  -- the step of def:update:\n"
+            "  trivial\n")
+        self.assertIn("Cmd.seq", decls, "an indented docstring must not end "
+                      "the datatype it is written inside")
+        self.assertEqual(refs["def:cmd:seq"]["decl"], "Cmd.seq")
+        self.assertEqual(refs["def:update"]["decl"], "alpha")
+
+    def test_a_trailing_comment_cites_nothing_it_does_not_introduce(self):
+        """A comment after the last declaration of a section introduces
+        nothing, so it is module-level — and a `-- ...` at the end of a line of
+        code is a note about that line, never the comment above the next
+        declaration."""
+        decls, refs = self._parsed(
+            "/-- Alpha. -/\n"
+            "def alpha : Nat := 0            -- and see def:update\n"
+            "\n"
+            "def beta : Nat := 0\n"
+            "\n"
+            "-- Left for later: def:frame.\n"
+            "\n"
+            "end X\n")
+        self.assertEqual(refs["def:update"]["decl"], "alpha",
+                         "a trailing comment belongs to the line it trails")
+        self.assertEqual(decls["beta"].doc_line, 0,
+                         "a trailing comment introduces nothing")
+        self.assertIsNone(refs["def:frame"]["decl"])
+
     def test_members_are_read_and_are_their_own_declarations(self):
         """A constructor is a declaration, with its own span.
 

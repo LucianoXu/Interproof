@@ -126,7 +126,7 @@ Only **comments** are read. A name occurring in code is a use of a declaration,
 not a citation of a paper; those are harvested separately and shown as the
 `uses` / `used by` rows.
 
-### In the docstring above a declaration
+### In the comment above a declaration
 
 ```lean
 /-- Frame lifting.  note, def:frame. -/
@@ -139,6 +139,20 @@ which is right, because the prose is where you said what it formalizes.
 
 An `@[simp]` attribute between the docstring and the declaration changes
 nothing.
+
+A `-- …` above a declaration is read the same way — it is a comment about that
+declaration in every other sense, and it is one here:
+
+```lean
+-- The frame lifting of note, def:frame, before it earned a docstring.
+def lift (f : Frame) : … := …
+```
+
+A whole run of `--` lines is one comment, and the band starts at the top of it.
+Only the extent is taken: the text of a docstring is Lean's own and the reader
+shows it as one, and a line comment is not that. What is *not* read this way is
+a `-- …` at the end of a line of code — that is a note about that line, and it
+belongs to the declaration the line is in, never to the declaration below it.
 
 ### In the code
 
@@ -171,6 +185,12 @@ is **the comment block that does the citing** — one band per block, never the
 hull of several. If `lem:one-sided` is named in the module header and again at
 a section break six hundred lines down, those are two places, and the file
 between them cites nothing.
+
+`/-! … -/` is module prose with or without a `##` heading, and the declaration
+above it ends where it begins: prose between two declarations belongs to
+neither of them. The same goes for a plain `-- …` that introduces nothing —
+one left at the end of a section, say — which is module-level for the same
+reason.
 
 ### What this means for you
 

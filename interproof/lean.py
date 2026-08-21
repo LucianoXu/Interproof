@@ -244,14 +244,29 @@ def parse_file(
         return text.count("\n", 0, idx) + 1
 
     # every comment block, by the line it ends on and the line it starts on,
-    # with whether it is a `/-- ... -/` docstring.  Both the docstring above a
-    # declaration and the extent of a citation in module prose are read off it.
-    block_end: dict[int, tuple[int, bool]] = {}
+    # with how it opens and whether it has that line to itself.  Both the
+    # comment above a declaration and the extent of a citation in module prose
+    # are read off it.
+    #
+    # How a comment opens is kept because Lean's four spellings do not mean the
+    # same thing here — `/-! ... -/` is module prose and owns nothing, and the
+    # text of a `/-- ... -/` is a docstring the reader shows as one while a
+    # `-- ...` is not.  Having the line to itself is kept because a trailing
+    # `-- ...` after code is a note about that line and introduces nothing.
+    block_end: dict[int, tuple[int, str, bool]] = {}
     block_at: list[tuple[int, int, int]] = []      # (start char, first line, last line)
+    top_comment: list[int] = []                    # first lines, column zero only
     for a, b in spans:
         last = line_of(max(a, min(b, len(text)) - 1))
-        block_end[last] = (line_of(a), text.startswith("/--", a))
+        opens = ("/--" if text.startswith("/--", a) else
+                 "/-!" if text.startswith("/-!", a) else
+                 "--" if text.startswith("--", a) else "/-")
+        col = a - (text.rfind("\n", 0, a) + 1)
+        own = not text[a - col:a].strip()
+        block_end[last] = (line_of(a), opens, own)
         block_at.append((a, line_of(a), last))
+        if own and col == 0:
+            top_comment.append(line_of(a))
 
     def block_of(idx: int) -> tuple[int, int]:
         """The comment block a citation sits in — the paragraph of prose that
@@ -264,7 +279,8 @@ def parse_file(
         return line_of(idx), line_of(idx)
 
     def doc_above(ln_no: int) -> tuple[str, int]:
-        """The `/-- ... -/` docstring introducing the line, if there is one.
+        """The comment introducing the line: its text if it is a docstring, and
+        the line it starts on.
 
         Asked of the comment spans rather than of the line text: a line ending
         in `-/` says only that *some* comment ends there, and a `/-! ## ... -/`
@@ -272,17 +288,36 @@ def parse_file(
         searching back for the `/--` that must have opened it walks into the
         previous declaration's docstring, and the band starts forty lines early
         with a whole declaration inside it.
+
+        A `-- ...` or a `/- ... -/` above a declaration introduces it exactly as
+        a docstring does, so the citations in it belong to that declaration and
+        the band covers it.  Only the *extent* is taken from those two: a
+        docstring's text is Lean's own and the reader shows it as such, and a
+        plain comment is not that — it is prose about the source.  `/-! ... -/`
+        is module prose, which no declaration owns, and introduces nothing.
         """
         j = ln_no - 2
         while j >= 0 and (lines[j].strip().startswith("@[") or not lines[j].strip()):
             j -= 1
         above = block_end.get(j + 1)
-        if not (above and above[1]):
+        if not above:
             return "", 0
-        doc = "\n".join(lines[above[0] - 1:j + 1])
+        first, opens, own = above
+        if not own or opens == "/-!":
+            return "", 0
+        if opens != "/--":
+            # a run of `-- ...` lines is one comment: each line is its own span,
+            # and the paragraph they make is what introduces the declaration
+            while opens == "--":
+                prev = block_end.get(first - 1)
+                if not (prev and prev[1] == "--" and prev[2]):
+                    break
+                first = prev[0]
+            return "", first
+        doc = "\n".join(lines[first - 1:j + 1])
         doc = re.sub(r"^\s*/--", "", doc).strip()
         doc = re.sub(r"-/\s*$", "", doc).strip()
-        return doc, above[0]
+        return doc, first
 
     # module docstring: first /-! ... -/
     module_doc = ""
@@ -313,11 +348,19 @@ def parse_file(
         [s[0] for s in starts] +
         [idx for idx, ln in enumerate(lines, start=1) if BREAK_RE.match(ln)] +
         [ln_no for ln_no, _ in sections] +
-        # only a docstring in column zero: an indented `/-- ... -/` introduces a
-        # constructor or a field, and breaking on it would end the `inductive`
-        # in the middle of its own body and lose every member below it
-        [line_of(a) for a, _ in spans
-         if text.startswith("/--", a) and (a == 0 or text[a - 1] == "\n")] +
+        # A comment on its own line in column zero is *between* declarations,
+        # whichever way it is written, and the one above it ends before it.
+        # Without this the declaration swallows the comment and claims the
+        # citations in it: a `-- ...` introducing the *next* declaration was
+        # read as a correspondence of the previous one, and a `/-! ... -/`
+        # block with no `##` heading — the only kind that was not already a
+        # boundary — put module prose inside a declaration's band.
+        #
+        # Column zero, because an indented comment is inside something: a
+        # `/-- ... -/` introducing a constructor or a field, a `-- ...` on a
+        # tactic.  Breaking on those would end an `inductive` in the middle of
+        # its own body and lose every member below it.
+        top_comment +
         [len(lines) + 1]
     )
 
@@ -402,10 +445,10 @@ def parse_file(
         if cites.marker_re is not None:
             for mm in cites.marker_re.finditer(text[max(0, start - 90):start]):
                 doc_hint = cites.marker_of[mm.lastgroup]
-        # A citation almost always sits in the `/-- ... -/` docstring *above* the
-        # declaration it is about, so the docstring counts as part of it.  Only
-        # `/-! ... -/` module prose, which no declaration owns, stays at module
-        # level.
+        # A citation almost always sits in the comment *above* the declaration
+        # it is about — a `/-- ... -/` docstring, or a `-- ...` note — so that
+        # comment counts as part of it.  Only `/-! ... -/` module prose, which
+        # no declaration owns, stays at module level.
         # Innermost wins.  A constructor's span sits inside its `inductive`'s,
         # so first-match would hand every citation to the parent and band the
         # whole datatype for a claim about one production.
